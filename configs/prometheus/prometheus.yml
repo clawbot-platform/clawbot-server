@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  - job_name: grafana
+    static_configs:
+      - targets:
+          - grafana:3000
+
+  - job_name: zeroclaw
+    static_configs:
+      - targets:
+          - zeroclaw:3000
+
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets:
+          - minio:9000

@@ -1,0 +1,43 @@
+name: security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  scans:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run gosec
+        run: "$(go env GOPATH)/bin/gosec" ./...
+
+      - name: Run govulncheck
+        run: "$(go env GOPATH)/bin/govulncheck" ./...
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: 1

@@ -1,0 +1,72 @@
+SHELL := /bin/sh
+
+COMPOSE_FILE := deploy/compose/docker-compose.yml
+COMPOSE_OVERRIDE := deploy/compose/docker-compose.override.yml
+ENV_FILE := .env
+COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) -f $(COMPOSE_OVERRIDE)
+GO_ENV := GOCACHE=$(CURDIR)/.cache/go-build GOMODCACHE=$(CURDIR)/.cache/go-mod
+
+.PHONY: help check-env up down restart ps logs smoke clean lint test security compose-validate run-server migrate-up migrate-down
+
+help: ## Show available targets.
+	@awk 'BEGIN {FS = ": ## "}; /^[a-zA-Z0-9_.-]+: ## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+check-env:
+	@./scripts/check-env.sh
+
+up: check-env ## Build and start the foundation stack.
+	$(COMPOSE) up -d --build
+
+down: check-env ## Stop the foundation stack.
+	$(COMPOSE) down --remove-orphans
+
+restart: down up ## Restart the foundation stack.
+
+ps: check-env ## Show foundation stack containers.
+	$(COMPOSE) ps
+
+logs: check-env ## Tail stack logs.
+	$(COMPOSE) logs -f --tail=100
+
+smoke: ## Wait for the stack and run the Go smoke checks.
+	./scripts/wait-for-stack.sh
+	./scripts/smoke.sh
+
+run-server: check-env ## Run the Phase 1 control-plane service locally.
+	@mkdir -p .cache/go-build .cache/go-mod
+	@set -a; . ./.env; set +a; $(GO_ENV) go run ./cmd/clawbot-server serve
+
+migrate-up: check-env ## Apply embedded database migrations.
+	@mkdir -p .cache/go-build .cache/go-mod
+	@set -a; . ./.env; set +a; $(GO_ENV) go run ./cmd/clawbot-server migrate up
+
+migrate-down: check-env ## Roll back the latest embedded database migration.
+	@mkdir -p .cache/go-build .cache/go-mod
+	@set -a; . ./.env; set +a; $(GO_ENV) go run ./cmd/clawbot-server migrate down
+
+clean: check-env ## Remove the foundation stack and named volumes.
+	$(COMPOSE) down -v --remove-orphans
+
+lint: ## Run local formatting and Go lint checks.
+	@mkdir -p .cache/go-build .cache/go-mod
+	@fmt_out=$$(gofmt -l .); \
+	if [ -n "$$fmt_out" ]; then \
+		echo "$$fmt_out"; \
+		echo "gofmt reported unformatted files"; \
+		exit 1; \
+	fi
+	$(GO_ENV) go vet ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; else echo "golangci-lint not installed; skipping"; fi
+
+test: ## Run deterministic Go unit tests.
+	@mkdir -p .cache/go-build .cache/go-mod
+	$(GO_ENV) go test ./...
+
+security: ## Run local security checks when the tools are installed.
+	@if command -v gosec >/dev/null 2>&1; then gosec ./...; else echo "gosec not installed; skipping"; fi
+	@if command -v govulncheck >/dev/null 2>&1; then govulncheck ./...; else echo "govulncheck not installed; skipping"; fi
+	@if command -v gitleaks >/dev/null 2>&1; then gitleaks detect --no-banner --redact; else echo "gitleaks not installed; skipping"; fi
+	@if command -v trivy >/dev/null 2>&1; then trivy fs --exit-code 1 --severity HIGH,CRITICAL .; else echo "trivy not installed; skipping"; fi
+
+compose-validate: check-env ## Validate the rendered Docker Compose configuration.
+	$(COMPOSE) config >/dev/null

@@ -1,0 +1,33 @@
+name: docker-compose-validate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Prepare environment
+        run: cp .env.example .env
+
+      - name: Validate compose config
+        run: make compose-validate
+
+      - name: Start foundation stack
+        run: make up
+
+      - name: Smoke test
+        run: make smoke
+
+      - name: Tear down stack
+        if: always()
+        run: make clean

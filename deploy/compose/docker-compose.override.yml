@@ -1,0 +1,17 @@
+services:
+  # Local development override: keep retention smaller and logs predictable for
+  # a single-node workstation while preserving the same service topology.
+  prometheus:
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+
+  omniroute:
+    environment:
+      NODE_ENV: development
+
+  zeroclaw:
+    environment:
+      RUST_LOG: ${ZEROCLAW_RUST_LOG:-info}
