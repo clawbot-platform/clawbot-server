@@ -84,11 +84,17 @@ func checkPostgres(_ context.Context, cfg config.Foundation) error {
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", address, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(cfg.Timeout))
+	if err := conn.SetDeadline(time.Now().Add(cfg.Timeout)); err != nil {
+		return fmt.Errorf("set deadline: %w", err)
+	}
 
-	packet := buildStartupPacket(cfg.PostgresUser, cfg.PostgresDB)
+	packet, err := buildStartupPacket(cfg.PostgresUser, cfg.PostgresDB)
+	if err != nil {
+		return fmt.Errorf("build startup packet: %w", err)
+	}
+
 	if _, err := conn.Write(packet); err != nil {
 		return fmt.Errorf("write startup packet: %w", err)
 	}
@@ -200,7 +206,7 @@ func checkHTTP(ctx context.Context, url string, timeout time.Duration) error {
 	if err != nil {
 		return fmt.Errorf("get %s: %w", url, err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("get %s: unexpected status %d", url, res.StatusCode)
@@ -209,13 +215,19 @@ func checkHTTP(ctx context.Context, url string, timeout time.Duration) error {
 	return nil
 }
 
-func buildStartupPacket(user string, database string) []byte {
+func buildStartupPacket(user string, database string) ([]byte, error) {
 	payload := []byte("user\x00" + user + "\x00database\x00" + database + "\x00client_encoding\x00UTF8\x00\x00")
-	packet := make([]byte, 8+len(payload))
-	binary.BigEndian.PutUint32(packet[0:4], uint32(len(packet)))
+
+	packetLen := 8 + len(payload)
+	if uint64(packetLen) > uint64(^uint32(0)) {
+		return nil, fmt.Errorf("startup packet too large: %d", packetLen)
+	}
+
+	packet := make([]byte, packetLen)
+	binary.BigEndian.PutUint32(packet[0:4], uint32(packetLen))
 	binary.BigEndian.PutUint32(packet[4:8], 196608)
 	copy(packet[8:], payload)
-	return packet
+	return packet, nil
 }
 
 func parsePostgresError(body []byte) string {
