@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: security
 
 on:
@@ -7,37 +8,54 @@ on:
   pull_request:
 
 jobs:
-  scans:
+  security:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       security-events: write
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - name: Prepare env file
+        run: |
+          cp .env.example .env
+          sed -i 's/REQUIRED_SECRET_replace_me_postgres/test-postgres-password/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_minio/test-minio-password/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_grafana/test-grafana-password/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_omniroute_api_key/test-omniroute-key/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_zeroclaw_token/test-zeroclaw-token/g' .env
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Tidy modules
+        run: go mod tidy
 
       - name: Run gosec
-        run: "$(go env GOPATH)/bin/gosec" ./...
+        uses: securego/gosec@master
+        with:
+          args: ./...
 
       - name: Run govulncheck
-        run: "$(go env GOPATH)/bin/govulncheck" ./...
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
-      - name: Gitleaks
+      - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: fs
-          ignore-unfixed: true
+          scan-ref: .
           severity: HIGH,CRITICAL
-          exit-code: 1
+          exit-code: '1'

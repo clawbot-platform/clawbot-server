@@ -61,7 +61,10 @@ DATABASE_URL
 
 # shellcheck disable=SC1090
 set -a
-. "$ENV_FILE"
+case "$ENV_FILE" in
+  */*) . "$ENV_FILE" ;;
+  *) . "./$ENV_FILE" ;;
+esac
 set +a
 
 for var in $required_vars; do

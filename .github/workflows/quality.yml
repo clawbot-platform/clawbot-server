@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: quality
 
 on:
@@ -7,22 +8,49 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  quality:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
 
-      - uses: actions/setup-go@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-
-      - name: SonarQube placeholder
-        if: ${{ secrets.SONAR_TOKEN != '' && vars.SONAR_HOST_URL != '' }}
+      - name: Prepare env file
         run: |
-          echo "SonarQube or SonarCloud integration placeholder."
-          echo "Configure scanner invocation here when org-level settings are available."
+          cp .env.example .env
+          sed -i 's/REQUIRED_SECRET_replace_me_postgres/test-postgres-password/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_minio/test-minio-password/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_grafana/test-grafana-password/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_omniroute_api_key/test-omniroute-key/g' .env
+          sed -i 's/REQUIRED_SECRET_replace_me_zeroclaw_token/test-zeroclaw-token/g' .env
+
+      - name: Tidy modules
+        run: go mod tidy
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      - name: SonarQube / SonarCloud scan
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        run: |
+          echo "Running Sonar analysis against ${SONAR_HOST_URL}"
+          # Replace with your actual sonar command
+          # sonar-scanner \
+          #   -Dsonar.host.url="${SONAR_HOST_URL}" \
+          #   -Dsonar.login="${SONAR_TOKEN}"
+
+      - name: Skip Sonar when not configured
+        if: ${{ env.SONAR_TOKEN == '' || env.SONAR_HOST_URL == '' }}
+        run: echo "Skipping Sonar because SONAR_TOKEN or SONAR_HOST_URL is not configured."
