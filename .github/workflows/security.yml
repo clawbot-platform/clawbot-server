@@ -51,7 +51,7 @@ jobs:
 
       - name: Install Gitleaks CLI
         run: |
-          go install github.com/gitleaks/gitleaks/v8@latest
+          go install github.com/zricethezav/gitleaks/v8@latest
 
       - name: Run Gitleaks CLI
         run: |
