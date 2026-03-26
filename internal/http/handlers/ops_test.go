@@ -142,7 +142,6 @@ func TestOverviewPageCoversTrimAndIntermediateErrors(t *testing.T) {
 	listEventsErrRouter.Get("/ops", listEventsErrHandler.OverviewPage)
 	assertStatusCode(t, listEventsErrRouter, http.MethodGet, "/ops", http.StatusBadRequest)
 }
-
 func TestOpsConsolePageActionsRedirect(t *testing.T) {
 	handler := newTestOpsHandler()
 	router := chi.NewRouter()
@@ -152,20 +151,14 @@ func TestOpsConsolePageActionsRedirect(t *testing.T) {
 	router.Post("/ops/schedulers/{schedulerID}/resume", handler.ResumeSchedulerPage)
 	router.Post("/ops/schedulers/{schedulerID}/run-once", handler.RunSchedulerOncePage)
 
-	req := httptest.NewRequest(http.MethodPost, "/ops/services/clawbot-server/maintenance", nil)
-	req.Header.Set("Referer", "/ops/services")
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusSeeOther || resp.Header().Get("Location") != "/ops/services" {
-		t.Fatalf("unexpected maintenance redirect %d %s", resp.Code, resp.Header().Get("Location"))
-	}
+	assertRedirectWithForm(t, router, http.MethodPost, "/ops/services/clawbot-server/maintenance", "return_to=services", "/ops/services")
+	assertRedirectWithForm(t, router, http.MethodPost, "/ops/services/clawbot-server/maintenance", "return_to=service_detail", "/ops/services/clawbot-server")
+	assertRedirectWithForm(t, router, http.MethodPost, "/ops/services/clawbot-server/resume", "return_to=services", "/ops/services")
 
-	assertRedirect(t, router, http.MethodPost, "/ops/services/clawbot-server/resume", "/ops/services")
-	assertRedirect(t, router, http.MethodPost, "/ops/schedulers/control-plane-sync/pause", "/ops/schedulers")
-	assertRedirect(t, router, http.MethodPost, "/ops/schedulers/control-plane-sync/resume", "/ops/schedulers")
-	assertRedirect(t, router, http.MethodPost, "/ops/schedulers/control-plane-sync/run-once", "/ops/schedulers")
+	assertRedirectWithForm(t, router, http.MethodPost, "/ops/schedulers/control-plane-sync/pause", "return_to=schedulers", "/ops/schedulers")
+	assertRedirectWithForm(t, router, http.MethodPost, "/ops/schedulers/control-plane-sync/resume", "return_to=schedulers", "/ops/schedulers")
+	assertRedirectWithForm(t, router, http.MethodPost, "/ops/schedulers/control-plane-sync/run-once", "return_to=schedulers", "/ops/schedulers")
 }
-
 func TestOpsConsolePageActionErrors(t *testing.T) {
 	handler := NewOpsHandler(stubOpsService{
 		setMaintenanceErr:  errors.New("maintenance failed"),
@@ -276,11 +269,12 @@ func TestOpsConsolePageErrorPathsAndHelpers(t *testing.T) {
 	notFoundRouter.Get("/ops/services/{serviceID}", notFoundHandler.ServiceDetailPage)
 	assertStatusCode(t, notFoundRouter, http.MethodGet, "/ops/services/missing", http.StatusNotFound)
 
-	req := httptest.NewRequest(http.MethodPost, "/ops/services/clawbot-server/maintenance", nil)
+	req := httptest.NewRequest(http.MethodPost, "/ops/services/clawbot-server/maintenance", strings.NewReader("return_to=services"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp := httptest.NewRecorder()
-	redirectBack(resp, req, "/ops/services")
+	redirectToReturnTarget(resp, req, buildReturnTarget(returnServices, "clawbot-server"))
 	if resp.Code != http.StatusSeeOther || resp.Header().Get("Location") != "/ops/services" {
-		t.Fatalf("unexpected fallback redirect %d %s", resp.Code, resp.Header().Get("Location"))
+		t.Fatalf("unexpected redirect %d %s", resp.Code, resp.Header().Get("Location"))
 	}
 
 	if got := formatOpsTime(time.Time{}); got != "never" {
@@ -406,144 +400,39 @@ func assertBodyContains(t *testing.T, handler http.Handler, method string, path 
 	}
 }
 
-func assertRedirect(t *testing.T, handler http.Handler, method string, path string, want string) {
-	t.Helper()
-	req := httptest.NewRequest(method, path, nil)
-	resp := httptest.NewRecorder()
-	handler.ServeHTTP(resp, req)
-	if resp.Code != http.StatusSeeOther || resp.Header().Get("Location") != want {
-		t.Fatalf("%s %s: expected redirect to %s, got %d %s", method, path, want, resp.Code, resp.Header().Get("Location"))
-	}
-}
-func TestSafeOpsRedirectTarget(t *testing.T) {
-	t.Run("falls back when referer missing", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "127.0.0.1:8081"
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		if got != opsServicesPath {
-			t.Fatalf("expected %q, got %q", opsServicesPath, got)
-		}
-	})
-
-	t.Run("allows same-origin list page", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "127.0.0.1:8081"
-		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/services")
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		if got != opsServicesPath {
-			t.Fatalf("expected %q, got %q", opsServicesPath, got)
-		}
-	})
-
-	t.Run("allows same-origin service detail page", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "127.0.0.1:8081"
-		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/services/service-1")
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		want := "/ops/services/service-1"
-		if got != want {
-			t.Fatalf("expected %q, got %q", want, got)
-		}
-	})
-
-	t.Run("allows same-origin scheduler detail page", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/schedulers/scheduler-1/pause", nil)
-		req.Host = "127.0.0.1:8081"
-		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/schedulers/scheduler-1")
-
-		got := safeOpsRedirectTarget(req, opsSchedulersPath)
-		want := "/ops/schedulers/scheduler-1"
-		if got != want {
-			t.Fatalf("expected %q, got %q", want, got)
-		}
-	})
-
-	t.Run("preserves query string on allowed ops route", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "127.0.0.1:8081"
-		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/services/service-1?tab=details")
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		want := "/ops/services/service-1?tab=details"
-		if got != want {
-			t.Fatalf("expected %q, got %q", want, got)
-		}
-	})
-
-	t.Run("rejects external referer", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "127.0.0.1:8081"
-		req.Header.Set("Referer", "https://evil.example.com/ops/services/service-1")
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		if got != opsServicesPath {
-			t.Fatalf("expected fallback %q, got %q", opsServicesPath, got)
-		}
-	})
-
-	t.Run("rejects non-ops path", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "127.0.0.1:8081"
-		req.Header.Set("Referer", "http://127.0.0.1:8081/admin")
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		if got != opsServicesPath {
-			t.Fatalf("expected fallback %q, got %q", opsServicesPath, got)
-		}
-	})
-
-	t.Run("rejects malformed referer", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "127.0.0.1:8081"
-		req.Header.Set("Referer", "http://%zz")
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		if got != opsServicesPath {
-			t.Fatalf("expected fallback %q, got %q", opsServicesPath, got)
-		}
-	})
-
-	t.Run("uses x-forwarded-host when present", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
-		req.Host = "internal-proxy:8080"
-		req.Header.Set("X-Forwarded-Host", "ops.example.internal")
-		req.Header.Set("Referer", "https://ops.example.internal/ops/services/service-1")
-
-		got := safeOpsRedirectTarget(req, opsServicesPath)
-		want := "/ops/services/service-1"
-		if got != want {
-			t.Fatalf("expected %q, got %q", want, got)
-		}
-	})
-}
-
-func TestNormalizeOpsRedirectTarget(t *testing.T) {
+func TestBuildReturnTarget(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		expect string
+		name      string
+		returnTo  string
+		serviceID string
+		want      string
 	}{
-		{name: "overview", input: "/ops", expect: "/ops"},
-		{name: "services", input: "/ops/services", expect: "/ops/services"},
-		{name: "service detail", input: "/ops/services/service-1", expect: "/ops/services/service-1"},
-		{name: "schedulers", input: "/ops/schedulers", expect: "/ops/schedulers"},
-		{name: "scheduler detail", input: "/ops/schedulers/scheduler-1", expect: "/ops/schedulers/scheduler-1"},
-		{name: "events", input: "/ops/events", expect: "/ops/events"},
-		{name: "reject external absolute", input: "https://evil.example.com/ops/services", expect: ""},
-		{name: "reject non ops", input: "/admin", expect: ""},
-		{name: "reject traversal", input: "/ops/../admin", expect: ""},
-		{name: "trim spaces", input: " /ops/services/service-1 ", expect: "/ops/services/service-1"},
+		{name: "overview", returnTo: returnOverview, want: opsOverviewPath},
+		{name: "services", returnTo: returnServices, want: opsServicesPath},
+		{name: "service detail", returnTo: returnServiceDetail, serviceID: "svc-1", want: "/ops/services/svc-1"},
+		{name: "service detail fallback", returnTo: returnServiceDetail, want: opsServicesPath},
+		{name: "schedulers", returnTo: returnSchedulers, want: opsSchedulersPath},
+		{name: "events", returnTo: returnEvents, want: opsEventsPath},
+		{name: "unknown token", returnTo: "evil", want: opsOverviewPath},
+		{name: "trim spaces", returnTo: " services ", want: opsServicesPath},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeOpsRedirectTarget(tt.input)
-			if got != tt.expect {
-				t.Fatalf("expected %q, got %q", tt.expect, got)
+			got := buildReturnTarget(tt.returnTo, tt.serviceID)
+			if got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
 			}
 		})
+	}
+}
+func assertRedirectWithForm(t *testing.T, handler http.Handler, method string, path string, body string, want string) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusSeeOther || resp.Header().Get("Location") != want {
+		t.Fatalf("%s %s: expected redirect to %s, got %d %s", method, path, want, resp.Code, resp.Header().Get("Location"))
 	}
 }

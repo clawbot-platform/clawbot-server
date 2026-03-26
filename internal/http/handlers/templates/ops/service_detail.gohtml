@@ -12,7 +12,8 @@
     {{ end }}
   </div>
 </section>
-
+{{/* service detail page action form */}}
+<input type="hidden" name="return_to" value="service_detail">
 <section class="cards">
   <div class="card"><div class="muted">Status</div><div class="metric"><span class="status-pill {{ statusClass .Service.Status }}">{{ .Service.Status }}</span></div></div>
   <div class="card"><div class="muted">Uptime</div><div class="metric">{{ formatUptime .Service.UptimeSeconds }}</div></div>

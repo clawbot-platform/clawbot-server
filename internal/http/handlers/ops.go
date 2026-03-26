@@ -5,10 +5,8 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
-	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +24,12 @@ const (
 	opsServicesPath   = "/ops/services"
 	opsSchedulersPath = "/ops/schedulers"
 	opsEventsPath     = "/ops/events"
+
+	returnOverview      = "overview"
+	returnServices      = "services"
+	returnServiceDetail = "service_detail"
+	returnSchedulers    = "schedulers"
+	returnEvents        = "events"
 )
 
 type OpsService interface {
@@ -88,7 +92,6 @@ func NewOpsHandler(service OpsService) *OpsHandler {
 		templates: templates,
 	}
 }
-
 func (h *OpsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	overview, err := h.service.Overview(r.Context())
 	if err != nil {
@@ -206,19 +209,17 @@ func (h *OpsHandler) OverviewPage(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, err)
 		return
 	}
-
 	if len(events) > 6 {
 		events = events[:6]
 	}
 
-	data := opsPageData{
+	h.renderPage(w, "overview-content", opsPageData{
 		Title:       "Overview",
 		CurrentPath: opsOverviewPath,
 		Overview:    overview,
 		Services:    services,
 		Events:      events,
-	}
-	h.renderPage(w, "overview-content", data)
+	})
 }
 
 func (h *OpsHandler) ServicesPage(w http.ResponseWriter, r *http.Request) {
@@ -234,13 +235,12 @@ func (h *OpsHandler) ServicesPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := opsPageData{
+	h.renderPage(w, "services-content", opsPageData{
 		Title:       "Services",
 		CurrentPath: opsServicesPath,
 		Overview:    overview,
 		Services:    services,
-	}
-	h.renderPage(w, "services-content", data)
+	})
 }
 
 func (h *OpsHandler) ServiceDetailPage(w http.ResponseWriter, r *http.Request) {
@@ -256,13 +256,12 @@ func (h *OpsHandler) ServiceDetailPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := opsPageData{
+	h.renderPage(w, "service-detail-content", opsPageData{
 		Title:       fmt.Sprintf("Service: %s", service.Name),
 		CurrentPath: opsServicesPath,
 		Overview:    overview,
 		Service:     service,
-	}
-	h.renderPage(w, "service-detail-content", data)
+	})
 }
 
 func (h *OpsHandler) SchedulersPage(w http.ResponseWriter, r *http.Request) {
@@ -278,13 +277,12 @@ func (h *OpsHandler) SchedulersPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := opsPageData{
+	h.renderPage(w, "schedulers-content", opsPageData{
 		Title:       "Schedulers",
 		CurrentPath: opsSchedulersPath,
 		Overview:    overview,
 		Schedulers:  schedulers,
-	}
-	h.renderPage(w, "schedulers-content", data)
+	})
 }
 
 func (h *OpsHandler) EventsPage(w http.ResponseWriter, r *http.Request) {
@@ -300,45 +298,56 @@ func (h *OpsHandler) EventsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := opsPageData{
+	h.renderPage(w, "events-content", opsPageData{
 		Title:       "Recent activity",
 		CurrentPath: opsEventsPath,
 		Overview:    overview,
 		Events:      events,
+	})
+}
+func (h *OpsHandler) handleServicePageAction(
+	w http.ResponseWriter,
+	r *http.Request,
+	action func(context.Context, string, string) error,
+) {
+	serviceID := chi.URLParam(r, "serviceID")
+	if err := action(r.Context(), serviceID, actorFromRequest(r)); err != nil {
+		writeServiceError(w, err)
+		return
 	}
-	h.renderPage(w, "events-content", data)
+	redirectToReturnTarget(w, r, buildReturnTarget(r.FormValue("return_to"), serviceID))
 }
 
 func (h *OpsHandler) SetMaintenancePage(w http.ResponseWriter, r *http.Request) {
-	h.handleServicePageAction(w, r, opsServicesPath, func(ctx context.Context, id string, actor string) error {
+	h.handleServicePageAction(w, r, func(ctx context.Context, id string, actor string) error {
 		_, err := h.service.SetMaintenance(ctx, id, actor)
 		return err
 	})
 }
 
 func (h *OpsHandler) ResumeServicePage(w http.ResponseWriter, r *http.Request) {
-	h.handleServicePageAction(w, r, opsServicesPath, func(ctx context.Context, id string, actor string) error {
+	h.handleServicePageAction(w, r, func(ctx context.Context, id string, actor string) error {
 		_, err := h.service.ResumeService(ctx, id, actor)
 		return err
 	})
 }
 
 func (h *OpsHandler) PauseSchedulerPage(w http.ResponseWriter, r *http.Request) {
-	h.handleSchedulerPageAction(w, r, opsSchedulersPath, func(ctx context.Context, id string, actor string) error {
+	h.handleSchedulerPageAction(w, r, func(ctx context.Context, id string, actor string) error {
 		_, err := h.service.PauseScheduler(ctx, id, actor)
 		return err
 	})
 }
 
 func (h *OpsHandler) ResumeSchedulerPage(w http.ResponseWriter, r *http.Request) {
-	h.handleSchedulerPageAction(w, r, opsSchedulersPath, func(ctx context.Context, id string, actor string) error {
+	h.handleSchedulerPageAction(w, r, func(ctx context.Context, id string, actor string) error {
 		_, err := h.service.ResumeScheduler(ctx, id, actor)
 		return err
 	})
 }
 
 func (h *OpsHandler) RunSchedulerOncePage(w http.ResponseWriter, r *http.Request) {
-	h.handleSchedulerPageAction(w, r, opsSchedulersPath, func(ctx context.Context, id string, actor string) error {
+	h.handleSchedulerPageAction(w, r, func(ctx context.Context, id string, actor string) error {
 		_, err := h.service.RunSchedulerOnce(ctx, id, actor)
 		return err
 	})
@@ -352,141 +361,41 @@ func (h *OpsHandler) renderPage(w http.ResponseWriter, contentTemplate string, d
 	}
 }
 
-func redirectBack(w http.ResponseWriter, r *http.Request, fallback string) {
-	http.Redirect(w, r, safeOpsRedirectTarget(r, fallback), http.StatusSeeOther)
-}
-
-func safeOpsRedirectTarget(r *http.Request, fallback string) string {
-	normalizedFallback := normalizeOpsRedirectTarget(fallback)
-	if normalizedFallback == "" {
-		normalizedFallback = opsOverviewPath
-	}
-
-	referer := strings.TrimSpace(r.Referer())
-	if referer == "" {
-		return normalizedFallback
-	}
-
-	refURL, err := url.Parse(referer)
-	if err != nil {
-		return normalizedFallback
-	}
-
-	// Only allow same-origin referers when the host is present.
-	if refURL.Host != "" && !sameOriginHost(refURL.Host, requestHost(r)) {
-		return normalizedFallback
-	}
-
-	targetPath := normalizeOpsRedirectTarget(refURL.EscapedPath())
-	if targetPath == "" {
-		return normalizedFallback
-	}
-
-	if refURL.RawQuery != "" {
-		return targetPath + "?" + refURL.RawQuery
-	}
-	return targetPath
-}
-
-func normalizeOpsRedirectTarget(target string) string {
-	target = strings.TrimSpace(target)
-	if target == "" {
-		return ""
-	}
-
-	parsed, err := url.Parse(target)
-	if err != nil || parsed.IsAbs() {
-		return ""
-	}
-
-	cleanPath := path.Clean(parsed.EscapedPath())
-	if cleanPath == "." || cleanPath == "" {
-		cleanPath = "/"
-	}
-
-	if !strings.HasPrefix(cleanPath, opsOverviewPath) {
-		return ""
-	}
-
-	switch {
-	case cleanPath == opsOverviewPath:
-		return opsOverviewPath
-	case cleanPath == opsServicesPath:
-		return opsServicesPath
-	case strings.HasPrefix(cleanPath, opsServicesPath+"/"):
-		return cleanPath
-	case cleanPath == opsSchedulersPath:
-		return opsSchedulersPath
-	case strings.HasPrefix(cleanPath, opsSchedulersPath+"/"):
-		return cleanPath
-	case cleanPath == opsEventsPath:
-		return opsEventsPath
-	default:
-		return ""
-	}
-}
-
-func requestHost(r *http.Request) string {
-	if forwardedHost := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
-		if strings.Contains(forwardedHost, ",") {
-			parts := strings.Split(forwardedHost, ",")
-			return strings.TrimSpace(parts[0])
-		}
-		return forwardedHost
-	}
-	if r.Host != "" {
-		return r.Host
-	}
-	return r.URL.Host
-}
-
-func sameOriginHost(a, b string) bool {
-	aHost := canonicalHost(a)
-	bHost := canonicalHost(b)
-	return aHost != "" && bHost != "" && strings.EqualFold(aHost, bHost)
-}
-
-func canonicalHost(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-
-	host, port, err := net.SplitHostPort(value)
-	if err == nil {
-		if port == "" || port == "80" || port == "443" {
-			return strings.ToLower(host)
-		}
-		return strings.ToLower(net.JoinHostPort(host, port))
-	}
-
-	return strings.ToLower(value)
-}
-
-func (h *OpsHandler) handleServicePageAction(
-	w http.ResponseWriter,
-	r *http.Request,
-	fallback string,
-	action func(context.Context, string, string) error,
-) {
-	if err := action(r.Context(), chi.URLParam(r, "serviceID"), actorFromRequest(r)); err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	redirectBack(w, r, fallback)
-}
-
 func (h *OpsHandler) handleSchedulerPageAction(
 	w http.ResponseWriter,
 	r *http.Request,
-	fallback string,
 	action func(context.Context, string, string) error,
 ) {
-	if err := action(r.Context(), chi.URLParam(r, "schedulerID"), actorFromRequest(r)); err != nil {
+	schedulerID := chi.URLParam(r, "schedulerID")
+	if err := action(r.Context(), schedulerID, actorFromRequest(r)); err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	redirectBack(w, r, fallback)
+	redirectToReturnTarget(w, r, buildReturnTarget(r.FormValue("return_to"), ""))
+}
+
+func redirectToReturnTarget(w http.ResponseWriter, r *http.Request, target string) {
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func buildReturnTarget(returnTo string, serviceID string) string {
+	switch strings.TrimSpace(returnTo) {
+	case returnOverview:
+		return opsOverviewPath
+	case returnServices:
+		return opsServicesPath
+	case returnServiceDetail:
+		if serviceID != "" {
+			return opsServicesPath + "/" + url.PathEscape(serviceID)
+		}
+		return opsServicesPath
+	case returnSchedulers:
+		return opsSchedulersPath
+	case returnEvents:
+		return opsEventsPath
+	default:
+		return opsOverviewPath
+	}
 }
 
 func dependencyPairs(values map[string]string) []dependencyEntry {

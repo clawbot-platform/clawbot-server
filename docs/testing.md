@@ -300,27 +300,9 @@ If SonarCloud coverage is configured, make sure `coverage.out` is generated succ
 
 ---
 
-## 10. Optional web UI checks
 
-If `clawbot-server` now includes a web UI or operations console frontend, run the frontend checks from the appropriate directory:
 
-```bash
-npm install
-npm run lint
-npm run test
-npm run build
-npm run test:e2e
-```
-
-Expected outcome:
-- lint passes
-- unit tests pass
-- production build succeeds
-- end-to-end tests pass
-
----
-
-## 11. Shutdown
+## 10. Shutdown
 
 When finished, stop the local stack:
 
@@ -377,4 +359,4 @@ This document is intended for:
 - pre-PR or pre-release smoke validation
 
 For CI and SonarCloud validation, use this together with the repository workflows and quality gate checks.
-```
+

@@ -6,7 +6,8 @@
   </div>
   <div class="muted">{{ .Overview.SchedulersActive }} active · {{ .Overview.SchedulersPaused }} paused</div>
 </section>
-
+{{/* schedulers list page action form */}}
+<input type="hidden" name="return_to" value="schedulers">
 <section class="panel">
   <table>
     <thead>
