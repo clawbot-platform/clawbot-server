@@ -41,26 +41,33 @@ func main() {
 		os.Exit(1)
 	}
 
+	checkOptional := os.Getenv("VALIDATE_OPTIONAL_STACK") == "1"
+
 	ctx := context.Background()
 	checks := []smokeCheck{
 		{name: "postgres", run: checkPostgres},
 		{name: "redis", run: checkRedis},
 		{name: "nats", run: checkNATS},
-		{name: "minio", run: func(ctx context.Context, cfg config.Foundation) error {
-			return checkHTTP(ctx, cfg.MinIOURL, cfg.Timeout)
-		}},
-		{name: "omniroute", run: func(ctx context.Context, cfg config.Foundation) error {
-			return checkHTTP(ctx, cfg.OmniRouteURL, cfg.Timeout)
-		}},
-		{name: "zeroclaw", run: func(ctx context.Context, cfg config.Foundation) error {
-			return checkHTTP(ctx, cfg.ZeroClawURL, cfg.Timeout)
-		}},
-		{name: "prometheus", run: func(ctx context.Context, cfg config.Foundation) error {
-			return checkHTTP(ctx, cfg.PrometheusURL, cfg.Timeout)
-		}},
-		{name: "grafana", run: func(ctx context.Context, cfg config.Foundation) error {
-			return checkHTTP(ctx, cfg.GrafanaURL, cfg.Timeout)
-		}},
+	}
+
+	if checkOptional {
+		checks = append(checks,
+			smokeCheck{name: "minio", run: func(ctx context.Context, cfg config.Foundation) error {
+				return checkHTTP(ctx, cfg.MinIOURL, cfg.Timeout)
+			}},
+			smokeCheck{name: "omniroute", run: func(ctx context.Context, cfg config.Foundation) error {
+				return checkHTTP(ctx, cfg.OmniRouteURL, cfg.Timeout)
+			}},
+			smokeCheck{name: "zeroclaw", run: func(ctx context.Context, cfg config.Foundation) error {
+				return checkHTTP(ctx, cfg.ZeroClawURL, cfg.Timeout)
+			}},
+			smokeCheck{name: "prometheus", run: func(ctx context.Context, cfg config.Foundation) error {
+				return checkHTTP(ctx, cfg.PrometheusURL, cfg.Timeout)
+			}},
+			smokeCheck{name: "grafana", run: func(ctx context.Context, cfg config.Foundation) error {
+				return checkHTTP(ctx, cfg.GrafanaURL, cfg.Timeout)
+			}},
+		)
 	}
 
 	failed := false

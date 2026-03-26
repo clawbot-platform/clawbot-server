@@ -90,3 +90,9 @@ security: ## Run local security checks when the tools are installed.
 
 compose-validate: check-env ## Validate the rendered Docker Compose configuration.
 	$(COMPOSE) config >/dev/null
+
+smoke: ## Wait for the core stack and run smoke checks.
+	./scripts/wait-for-stack.sh
+
+smoke-optional: ## Wait for the core + optional stack and run smoke checks.
+	VALIDATE_OPTIONAL_STACK=1 ./scripts/wait-for-stack.sh

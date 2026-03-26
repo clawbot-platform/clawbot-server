@@ -23,10 +23,24 @@ jobs:
       - name: Prepare environment
         run: ./scripts/prepare-ci-env.sh
 
-      - name: Validate compose config
+      - name: Validate core environment
+        run: ./scripts/check-env.sh .env
+
+      - name: Validate optional environment
+        run: VALIDATE_OPTIONAL_STACK=1 ./scripts/check-env.sh .env
+
+      - name: Validate core compose config
         run: make compose-validate
 
-      - name: Start foundation stack
+      - name: Validate optional compose config
+        run: |
+          docker compose --env-file .env \
+            -f deploy/compose/docker-compose.yml \
+            -f deploy/compose/docker-compose.override.yml \
+            -f deploy/compose/docker-compose.optional.yml \
+            config >/dev/null
+
+      - name: Start core foundation stack
         run: make up
 
       - name: Smoke test
