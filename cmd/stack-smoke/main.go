@@ -135,7 +135,9 @@ func checkRedis(_ context.Context, cfg config.Foundation) error {
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", address, err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	_ = conn.SetDeadline(time.Now().Add(cfg.Timeout))
 
@@ -161,7 +163,9 @@ func checkNATS(_ context.Context, cfg config.Foundation) error {
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", address, err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	_ = conn.SetDeadline(time.Now().Add(cfg.Timeout))
 

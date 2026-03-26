@@ -21,22 +21,13 @@ jobs:
           cache: true
 
       - name: Prepare environment
-        run: |
-          cp .env.example .env
-          sed -i 's/REQUIRED_SECRET_replace_me_postgres/test-postgres-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_minio/test-minio-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_grafana/test-grafana-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_omniroute_api_key/test-omniroute-key/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_zeroclaw_token/test-zeroclaw-token/g' .env
+        run: ./scripts/prepare-ci-env.sh
 
       - name: Validate compose config
         run: make compose-validate
 
       - name: Start foundation stack
         run: make up
-
-      - name: Sync Go modules
-        run: go mod tidy
 
       - name: Smoke test
         run: make smoke

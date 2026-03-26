@@ -10,13 +10,14 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -24,33 +25,43 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Prepare env file
+      - name: Check formatting
         run: |
-          cp .env.example .env
-          sed -i 's/REQUIRED_SECRET_replace_me_postgres/test-postgres-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_minio/test-minio-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_grafana/test-grafana-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_omniroute_api_key/test-omniroute-key/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_zeroclaw_token/test-zeroclaw-token/g' .env
+          fmt_out=$(find cmd internal -name '*.go' -print | xargs gofmt -l)
+          if [ -n "$fmt_out" ]; then
+            echo "$fmt_out"
+            exit 1
+          fi
 
-      - name: Tidy modules
-        run: go mod tidy
+      - name: Go vet
+        run: go vet ./...
 
-      - name: Lint
-        run: make lint
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: ./...
 
-      - name: Test
-        run: make test
+      - name: Test with coverage
+        run: go test -covermode=atomic -coverprofile=coverage.out ./...
 
-      - name: SonarQube / SonarCloud scan
-        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
-        run: |
-          echo "Running Sonar analysis against ${SONAR_HOST_URL}"
-          # Replace with your actual sonar command
-          # sonar-scanner \
-          #   -Dsonar.host.url="${SONAR_HOST_URL}" \
-          #   -Dsonar.login="${SONAR_TOKEN}"
+      - name: SonarCloud scan
+        if: ${{ secrets.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
 
-      - name: Skip Sonar when not configured
-        if: ${{ env.SONAR_TOKEN == '' || env.SONAR_HOST_URL == '' }}
-        run: echo "Skipping Sonar because SONAR_TOKEN or SONAR_HOST_URL is not configured."
+      - name: SonarCloud quality gate
+        if: ${{ secrets.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-quality-gate-action@master
+        timeout-minutes: 10
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: Skip Sonar when token is unavailable
+        if: ${{ secrets.SONAR_TOKEN == '' }}
+        run: echo "Skipping SonarCloud because SONAR_TOKEN is not available for this run."

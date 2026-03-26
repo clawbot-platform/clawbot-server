@@ -11,14 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Check formatting
         run: |
-          fmt_out=$(gofmt -l .)
+          fmt_out=$(find cmd internal -name '*.go' -print | xargs gofmt -l)
           if [ -n "$fmt_out" ]; then
             echo "$fmt_out"
             exit 1
@@ -27,5 +30,24 @@ jobs:
       - name: Go vet
         run: go vet ./...
 
-      - name: Unit tests
-        run: go test ./...
+      - name: Unit tests with coverage
+        run: go test -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          {
+            echo "## Go coverage"
+            echo
+            echo '```text'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: |
+            coverage.out
+            coverage.txt

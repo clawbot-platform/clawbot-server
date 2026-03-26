@@ -5,8 +5,9 @@ COMPOSE_OVERRIDE := deploy/compose/docker-compose.override.yml
 ENV_FILE := .env
 COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) -f $(COMPOSE_OVERRIDE)
 GO_ENV := GOCACHE=$(CURDIR)/.cache/go-build GOMODCACHE=$(CURDIR)/.cache/go-mod
+COVERAGE_FILE := coverage.out
 
-.PHONY: help check-env up down restart ps logs smoke clean lint test security compose-validate run-server migrate-up migrate-down
+.PHONY: help check-env up down restart ps logs smoke clean lint test coverage coverage-html security compose-validate run-server migrate-up migrate-down
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ": ## "}; /^[a-zA-Z0-9_.-]+: ## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -49,7 +50,7 @@ clean: check-env ## Remove the foundation stack and named volumes.
 
 lint: ## Run local formatting and Go lint checks.
 	@mkdir -p .cache/go-build .cache/go-mod
-	@fmt_out=$$(gofmt -l .); \
+	@fmt_out=$$(find cmd internal -name '*.go' -print | xargs gofmt -l); \
 	if [ -n "$$fmt_out" ]; then \
 		echo "$$fmt_out"; \
 		echo "gofmt reported unformatted files"; \
@@ -61,6 +62,15 @@ lint: ## Run local formatting and Go lint checks.
 test: ## Run deterministic Go unit tests.
 	@mkdir -p .cache/go-build .cache/go-mod
 	$(GO_ENV) go test ./...
+
+coverage: ## Run Go tests with a coverage profile and summary.
+	@mkdir -p .cache/go-build .cache/go-mod
+	$(GO_ENV) go test -covermode=atomic -coverprofile=$(COVERAGE_FILE) ./...
+	go tool cover -func=$(COVERAGE_FILE)
+
+coverage-html: coverage ## Render an HTML coverage report at coverage.html.
+	go tool cover -html=$(COVERAGE_FILE) -o coverage.html
+	@echo "wrote coverage.html"
 
 security: ## Run local security checks when the tools are installed.
 	@if command -v gosec >/dev/null 2>&1; then gosec ./...; else echo "gosec not installed; skipping"; fi

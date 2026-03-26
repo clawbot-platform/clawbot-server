@@ -36,7 +36,9 @@ func TestCheckHTTP(t *testing.T) {
 
 func TestCheckRedis(t *testing.T) {
 	restore := withDialStub(t, func(server net.Conn) {
-		defer server.Close()
+		defer func() {
+			_ = server.Close()
+		}()
 
 		request := make([]byte, len("*1\r\n$4\r\nPING\r\n"))
 		_, err := io.ReadFull(server, request)
@@ -63,7 +65,9 @@ func TestCheckRedis(t *testing.T) {
 
 func TestCheckNATS(t *testing.T) {
 	restore := withDialStub(t, func(server net.Conn) {
-		defer server.Close()
+		defer func() {
+			_ = server.Close()
+		}()
 
 		_, _ = server.Write([]byte("INFO {\"server_id\":\"test\"}\r\n"))
 		reader := bufio.NewReader(server)
@@ -91,7 +95,9 @@ func TestCheckNATS(t *testing.T) {
 
 func TestCheckPostgresAuthRequestIsReady(t *testing.T) {
 	restore := withDialStub(t, func(server net.Conn) {
-		defer server.Close()
+		defer func() {
+			_ = server.Close()
+		}()
 
 		header := make([]byte, 4)
 		if _, err := io.ReadFull(server, header); err != nil {

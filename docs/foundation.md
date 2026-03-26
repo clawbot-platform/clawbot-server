@@ -102,6 +102,6 @@ Named volumes preserve local state for:
 
 ## Future integration points
 
-- `clawbot-trust-lab` will consume this stack later as the primary platform foundation.
-- `clawmem` will join later as a separate service rather than being implemented here.
+- downstream projects can consume this stack as a shared platform foundation without copying the bootstrap logic into their own repos.
+- `clawbot-trust-lab` and `clawmem` are examples of consumers, not hard requirements of the stack.
 - other verticals such as watchlist review can reuse the same shared foundation.

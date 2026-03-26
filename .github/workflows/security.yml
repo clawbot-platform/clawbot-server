@@ -27,22 +27,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Prepare env file
-        run: |
-          cp .env.example .env
-          sed -i 's/REQUIRED_SECRET_replace_me_postgres/test-postgres-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_minio/test-minio-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_grafana/test-grafana-password/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_omniroute_api_key/test-omniroute-key/g' .env
-          sed -i 's/REQUIRED_SECRET_replace_me_zeroclaw_token/test-zeroclaw-token/g' .env
-
-      - name: Tidy modules
-        run: go mod tidy
-
       - name: Run gosec
-        uses: securego/gosec@master
-        with:
-          args: ./...
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          "$(go env GOPATH)/bin/gosec" ./...
 
       - name: Run govulncheck
         run: |

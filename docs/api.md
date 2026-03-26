@@ -25,7 +25,7 @@ Example create request:
 
 ```json
 {
-  "name": "trust-lab-baseline",
+  "name": "platform-baseline",
   "description": "Platform-created run scaffold",
   "status": "pending",
   "scenario_type": "placeholder",
@@ -46,11 +46,11 @@ Example create request:
 
 ```json
 {
-  "name": "trust-analyst",
+  "name": "shared-runtime-operator",
   "role": "review",
   "runtime": "zeroclaw",
   "status": "active",
-  "repo_hint": "clawbot-trust-lab",
+  "repo_hint": "example-consumer-repo",
   "version": "phase-1",
   "config_json": {
     "provider": "omniroute"
@@ -106,3 +106,4 @@ Errors return:
 - Run statuses are scaffolded as `pending`, `scheduled`, `running`, `completed`, `failed`, `cancelled`.
 - Bot statuses are scaffolded as `active`, `inactive`, `deprecated`.
 - Policy behavior is intentionally generic in Phase 1; `enabled` is the main operational field.
+- Sample names in this document are illustrative only. The API is generic and is meant to be reusable by projects outside Trust Lab or any DRQ-style workflow.

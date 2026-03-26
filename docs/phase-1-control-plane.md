@@ -32,6 +32,6 @@ This phase still does not add:
 
 ## Relationship to other repos
 
-- `clawbot-trust-lab` will later consume this control plane rather than embedding platform state management locally.
-- `clawmem` remains a separate future subsystem and is not implemented here.
+- downstream repos can consume this control plane rather than embedding platform state management locally.
+- `clawbot-trust-lab` and `clawmem` are useful examples of those consumers, but they are not required by the runtime or API surface here.
 - ZeroClaw and OmniRoute remain integrated external components, not reimplemented internals.
