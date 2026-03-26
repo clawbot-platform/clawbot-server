@@ -1,17 +1,12 @@
 services:
-  # Local development override: keep retention smaller and logs predictable for
-  # a single-node workstation while preserving the same service topology.
-  prometheus:
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=7d"
-      - "--web.enable-lifecycle"
-
-  omniroute:
+  # Local development override: keep only the core stack and make it easier to
+  # use on a single-node workstation or homelab dry run.
+  postgres:
     environment:
-      NODE_ENV: development
+      TZ: UTC
 
-  zeroclaw:
-    environment:
-      RUST_LOG: ${ZEROCLAW_RUST_LOG:-info}
+  redis:
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000", "--loglevel", "warning"]
+
+  nats:
+    command: ["--jetstream", "--store_dir", "/data", "--http_port", "8222", "--server_name", "clawbot-nats"]

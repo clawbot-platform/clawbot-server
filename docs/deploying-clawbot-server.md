@@ -1,21 +1,21 @@
-```md
 # Deploying Clawbot Server
-## Single-Document Deployment and Operations Guide
+## Single-Document Core Stack Deployment and Operations Guide
 
 This document is the primary deployment guide for `clawbot-server`.
 
 It is intended for teams that want to:
-- deploy `clawbot-server`
-- run the local foundation stack it depends on
-- verify the control-plane service is healthy
+- run the core foundation services `clawbot-server` depends on
+- start the control-plane service cleanly
+- verify that the control-plane service is healthy
 - access the Operations Console UI
 - avoid jumping across multiple repository documents
 
-This guide reflects the current repository deployment model:
-- source checkout
-- Docker Compose foundation stack
+This guide reflects the current supported repository workflow:
+
+- Docker Compose for the core foundation services
+- optional Docker Compose for additional services
+- `clawbot-server` running locally on the host
 - local or internal-only deployment
-- `clawbot-server` run as the control-plane service
 
 ---
 
@@ -28,7 +28,7 @@ It provides:
 - embedded database migrations
 - operational endpoints
 - a small embedded Operations Console UI
-- a local foundation stack for development, smoke checks, and platform validation
+- a foundation for managing multiple ClawBots and related services
 
 It is intended to be reusable beyond any single domain application.
 
@@ -36,36 +36,79 @@ It is intended to be reusable beyond any single domain application.
 
 ## What this guide deploys
 
-This guide deploys:
+This guide deploys the **core `clawbot-server` stack**:
 
 - PostgreSQL + pgvector
 - Redis
 - NATS
-- MinIO
-- Prometheus
-- Grafana
-- OmniRoute
-- ZeroClaw
 - `clawbot-server`
 
-Important distinction:
+Optional services such as:
+- MinIO
+- OmniRoute
+- ZeroClaw
+- Prometheus
+- Grafana
 
-- the **foundation stack** includes multiple supporting services for local validation and observability
-- the **core `clawbot-server` process** is the reusable control-plane service
-- not every listed supporting service is necessarily a hard runtime dependency for every future consumer of `clawbot-server`
+are **not required** for the current lean deployment path and are intentionally excluded from the default Version 1 DRQ deployment.
 
 ---
 
 ## Deployment model
 
-Current deployment model:
-- clone the repository
+Current recommended deployment model:
 - configure `.env`
-- start the foundation stack with Docker Compose
-- run `clawbot-server` locally against that stack
+- validate the core environment
+- run the core foundation services with Docker Compose
+- optionally enable optional services only when needed
+- run `clawbot-server` locally on the host
 - verify health, version, and Operations Console endpoints
 
-This is the current practical path for internal, lab, and homelab deployment.
+This is the recommended practical path for internal, homelab, and incumbent lab deployments.
+
+---
+
+## Core vs Optional Services
+
+`clawbot-server` is designed to work as a reusable control-plane foundation for multiple Clawbot-based systems.
+
+Not every service in the broader foundation stack is required for every deployment.
+
+### Recommended service matrix
+
+| Service        | Role                        | Recommendation for generic `clawbot-server` | Required for DRQ Version 1? | Why                                                                                                     |
+|----------------|-----------------------------|---------------------------------------------|-----------------------------|---------------------------------------------------------------------------------------------------------|
+| **Postgres**   | durable control-plane state | **Core**                                    | **Yes**                     | source of truth for runs, scheduler/control-plane state, and persistent platform data                   |
+| **Redis**      | cache / coordination        | **Core**                                    | **Yes**                     | useful for short-lived coordination, cached state, and runtime support                                  |
+| **NATS**       | event bus / async signaling | **Core**                                    | **Yes**                     | strong fit for multi-Clawbot orchestration and decoupled control-plane events                           |
+| **Prometheus** | metrics collection          | **Optional production-ops layer**           | **No**                      | useful for observability, but not required to run DRQ Version 1                                         |
+| **Grafana**    | dashboards / visualization  | **Optional production-ops layer**           | **No**                      | useful for management and operational dashboards, but not required for DRQ Version 1                    |
+| **MinIO**      | artifact / object storage   | **Optional artifact layer**                 | **No**                      | useful later for reports, audit exports, and replay bundles, but not required for current DRQ Version 1 |
+| **OmniRoute**  | model gateway               | **Optional runtime integration layer**      | **No**                      | useful for extended model-routing workflows, but not required for the lean control-plane stack          |
+| **ZeroClaw**   | runtime substrate           | **Optional runtime integration layer**      | **No**                      | useful for broader agent-runtime experiments, but not required for DRQ Version 1                        |
+
+### DRQ Version 1 note
+
+**Version 1 of DRQ uses only the core `clawbot-server` foundation.**
+
+That means DRQ Version 1 requires:
+
+- Postgres
+- Redis
+- NATS
+- `clawbot-server`
+
+It does **not** require:
+
+- MinIO
+- Prometheus
+- Grafana
+- OmniRoute
+- ZeroClaw
+
+### Recommended deployment guidance
+
+For the **24-hour dry run** and **1-week DRQ Version 1 run**, keep the stack lean and enable only the core services unless you explicitly want additional observability, artifact storage, or runtime integrations.
 
 ---
 
@@ -73,211 +116,171 @@ This is the current practical path for internal, lab, and homelab deployment.
 
 You need:
 
-- Git
-- Docker / Docker Compose
+- Docker
+- Docker Compose
 - Go toolchain
 - `curl`
 
 Optional but useful:
-- `golangci-lint`
-- `gosec`
-- `govulncheck`
+- `jq`
+
+This guide uses Docker for the foundation services and the local Go toolchain for the `clawbot-server` process.
 
 ---
 
-## 1. Clone the repository
+## 1. Prepare the repository environment file
 
-```bash
-git clone https://github.com/clawbot-platform/clawbot-server.git
-cd clawbot-server
-```
-
----
-
-## 2. Create `.env`
-
-Copy the example file:
+From the repository root:
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env`.
+### Core vs optional environment validation
 
-### Required values to replace
+Validate the **core stack**:
 
-At minimum, replace all placeholder secret values:
-
-- `POSTGRES_PASSWORD`
-- `MINIO_ROOT_PASSWORD`
-- `GRAFANA_ADMIN_PASSWORD`
-- `ZEROCLAW_API_KEY`
-- `ZEROCLAW_GATEWAY_TOKEN`
-
-Also make sure `DATABASE_URL` uses the same PostgreSQL password as `POSTGRES_PASSWORD`.
-
-Example pattern:
-
-```env
-POSTGRES_PASSWORD=replace_with_real_value
-DATABASE_URL=postgres://clawbot:replace_with_real_value@127.0.0.1:5432/clawbot?sslmode=disable
+```bash
+./scripts/check-env.sh .env
 ```
 
-### Values that usually do not need changing
+Validate **core + optional stack** only if you plan to use the optional compose file:
 
-Most default values can stay as-is unless:
-- you have port conflicts
-- you want non-default local bindings
-- you are integrating into a different internal environment
+```bash
+VALIDATE_OPTIONAL_STACK=1 ./scripts/check-env.sh .env
+```
 
-These usually can remain unchanged:
-- host bindings
-- ports
-- image names
-- database name/user
-- Redis settings
-- NATS settings
-- Prometheus/Grafana ports
-- OmniRoute defaults
-- ZeroClaw defaults
-- smoke timeout
-- server log level and shutdown timeout
+### What the environment file means
+
+The `.env.example` file is aligned to the Compose split:
+
+- **Core/default**
+  - Postgres
+  - Redis
+  - NATS
+
+- **Optional**
+  - MinIO
+  - OmniRoute
+  - ZeroClaw
+  - Prometheus
+  - Grafana
+
+Optional secrets and values are only required when enabling the optional stack.
 
 ---
 
-## 3. Validate environment configuration
+## 2. Start the core stack
 
-Run:
+Use the repository Compose files directly.
 
 ```bash
-make check-env
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  up -d
+```
+
+Check container status:
+
+```bash
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  ps
 ```
 
 Expected outcome:
-- the environment file passes validation
-- there are no missing required variables
+- core containers are running
+- Postgres, Redis, and NATS become healthy
 
 ---
 
-## 4. Start the foundation stack
+## 3. Start optional services only when needed
 
-Bring up the foundation stack:
+Optional services are provided by a separate Compose file.
 
 ```bash
-make up
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  -f deploy/compose/docker-compose.optional.yml \
+  up -d
 ```
 
-Then validate it with the built-in smoke checks:
+This enables:
+
+- MinIO
+- OmniRoute
+- ZeroClaw
+- Prometheus
+- Grafana
+
+These are not required for the lean `clawbot-server` deployment path.
+
+---
+
+## 4. Run `clawbot-server`
+
+Run the control-plane service locally against the core stack:
 
 ```bash
-make smoke
+make migrate-up
+make run-server
 ```
 
 Expected outcome:
-- Docker containers start successfully
-- smoke checks pass for the foundation services
+- embedded migrations apply cleanly
+- the service starts successfully
+- the service listens on `127.0.0.1:8080` unless overridden in `.env`
 
 ---
 
-## 5. Run `clawbot-server`
-
-Start the control-plane service:
-
-```bash
-SERVER_ADDRESS=127.0.0.1:8081 make run-server
-```
-
-Notes:
-- this runs the server locally against the foundation stack
-- the server uses embedded database migrations
-- version metadata is injected by the `Makefile`
-
-Expected outcome:
-- the server starts successfully
-- no migration or database errors appear
-- the service listens on `127.0.0.1:8081`
-
----
-
-## 6. Verify health and version
+## 5. Verify health and version
 
 Open another terminal and run:
 
 ```bash
-curl http://127.0.0.1:8081/healthz
-curl http://127.0.0.1:8081/readyz
-curl http://127.0.0.1:8081/version
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8080/readyz
+curl http://127.0.0.1:8080/version
 ```
 
 Expected outcome:
 - `/healthz` returns success
 - `/readyz` returns success
-- `/version` returns real build metadata instead of fallback placeholders
-
-Example:
-
-```json
-{
-  "version": "v1.0.0",
-  "commit": "abc1234",
-  "build_date": "2026-03-26T14:35:00Z"
-}
-```
+- `/version` returns build metadata if ldflags are configured
 
 ---
 
-## 7. Access the Operations Console UI
+## 6. Access the Operations Console UI
 
 Open the embedded Operations Console in a browser:
 
 ```text
-http://127.0.0.1:8081/ops
+http://127.0.0.1:8080/ops
 ```
 
 Useful pages:
 
 ```text
-http://127.0.0.1:8081/ops
-http://127.0.0.1:8081/ops/services
-http://127.0.0.1:8081/ops/schedulers
-http://127.0.0.1:8081/ops/events
+http://127.0.0.1:8080/ops
+http://127.0.0.1:8080/ops/services
+http://127.0.0.1:8080/ops/schedulers
+http://127.0.0.1:8080/ops/events
 ```
-
-The Operations Console is intended to provide:
-- overview/status
-- services/Clawbots
-- schedulers/jobs
-- recent activity
-- safe maintenance and scheduler actions
 
 ---
 
-## 8. Validate the operations API
+## 7. Validate the operations API
 
 Run these from another terminal:
 
-### Overview
-
 ```bash
-curl http://127.0.0.1:8081/api/v1/ops/overview
-```
-
-### Services
-
-```bash
-curl http://127.0.0.1:8081/api/v1/ops/services
-```
-
-### Schedulers
-
-```bash
-curl http://127.0.0.1:8081/api/v1/ops/schedulers
-```
-
-### Events
-
-```bash
-curl http://127.0.0.1:8081/api/v1/ops/events
+curl http://127.0.0.1:8080/api/v1/ops/overview
+curl http://127.0.0.1:8080/api/v1/ops/services
+curl http://127.0.0.1:8080/api/v1/ops/schedulers
+curl http://127.0.0.1:8080/api/v1/ops/events
 ```
 
 Expected outcome:
@@ -288,51 +291,51 @@ Expected outcome:
 
 ---
 
-## 9. Test safe maintenance actions
+## 8. Test safe maintenance actions
 
 Use the Operations Console UI or the API.
 
 ### Put a service into maintenance mode
 
 ```bash
-curl -X POST http://127.0.0.1:8081/api/v1/ops/services/<service-id>/maintenance
+curl -X POST http://127.0.0.1:8080/api/v1/ops/services/<service-id>/maintenance
 ```
 
 ### Resume a service
 
 ```bash
-curl -X POST http://127.0.0.1:8081/api/v1/ops/services/<service-id>/resume
+curl -X POST http://127.0.0.1:8080/api/v1/ops/services/<service-id>/resume
 ```
 
 ### Pause a scheduler
 
 ```bash
-curl -X POST http://127.0.0.1:8081/api/v1/ops/schedulers/<scheduler-id>/pause
+curl -X POST http://127.0.0.1:8080/api/v1/ops/schedulers/<scheduler-id>/pause
 ```
 
 ### Resume a scheduler
 
 ```bash
-curl -X POST http://127.0.0.1:8081/api/v1/ops/schedulers/<scheduler-id>/resume
+curl -X POST http://127.0.0.1:8080/api/v1/ops/schedulers/<scheduler-id>/resume
 ```
 
 ### Run a scheduler once
 
 ```bash
-curl -X POST http://127.0.0.1:8081/api/v1/ops/schedulers/<scheduler-id>/run-once
+curl -X POST http://127.0.0.1:8080/api/v1/ops/schedulers/<scheduler-id>/run-once
 ```
 
 Then re-check state:
 
 ```bash
-curl http://127.0.0.1:8081/api/v1/ops/services/<service-id>
-curl http://127.0.0.1:8081/api/v1/ops/schedulers/<scheduler-id>
-curl http://127.0.0.1:8081/api/v1/ops/events
+curl http://127.0.0.1:8080/api/v1/ops/services/<service-id>
+curl http://127.0.0.1:8080/api/v1/ops/schedulers/<scheduler-id>
+curl http://127.0.0.1:8080/api/v1/ops/events
 ```
 
 ---
 
-## 10. Local quality checks
+## 9. Local quality checks
 
 Run the local quality suite:
 
@@ -357,11 +360,9 @@ Optional HTML coverage:
 go tool cover -html=coverage.out -o coverage.html
 ```
 
-This is useful before pushing changes or preparing a release.
-
 ---
 
-## 11. Common startup issue: PostgreSQL role does not exist
+## 10. Common startup issue: PostgreSQL role does not exist
 
 If you see an error like:
 
@@ -378,33 +379,32 @@ the most likely cause is:
 If you do not need to preserve the existing database volume:
 
 ```bash
-make clean
-docker compose down -v
-make up
-make smoke
-SERVER_ADDRESS=127.0.0.1:8081 make run-server
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  down -v
+
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  up -d
 ```
 
 ### Alternative fix
+
 If you need to preserve the volume, manually create the role/database in PostgreSQL.
 
 ---
 
-## 12. Common startup issue: `/version` shows `dev` / `unknown`
+## 11. Common startup issue: `/version` shows `dev` / `unknown`
 
 If:
 
 ```bash
-curl http://127.0.0.1:8081/version
+curl http://127.0.0.1:8080/version
 ```
 
-returns:
-
-```json
-{"version":"dev","commit":"unknown","build_date":"unknown"}
-```
-
-then build metadata is not being injected during startup.
+returns fallback values, then build metadata is not being injected during startup.
 
 The current repository `Makefile` should handle this. If it does not, verify the local `Makefile` includes `-ldflags` injection for:
 - version
@@ -413,7 +413,7 @@ The current repository `Makefile` should handle this. If it does not, verify the
 
 ---
 
-## 13. Common issue: Operations Console template/render failures
+## 12. Common issue: Operations Console template/render failures
 
 If the UI returns a 500 error or template panic:
 - confirm all templates parse successfully
@@ -424,12 +424,34 @@ This is especially relevant after recent UI/security hardening.
 
 ---
 
-## 14. Stop the stack
+## 13. Stop the stack
 
-To stop the local stack and remove volumes:
+Stop the core stack:
 
 ```bash
-make clean
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  down
+```
+
+Stop the core stack and remove volumes:
+
+```bash
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  down -v
+```
+
+Stop core + optional stack:
+
+```bash
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  -f deploy/compose/docker-compose.optional.yml \
+  down
 ```
 
 To stop only the foreground server process:
@@ -440,30 +462,29 @@ Ctrl+C
 
 ---
 
-## 15. Recommended deployment flow
+## 14. Recommended deployment flow
 
 Use this sequence:
 
 1. `cp .env.example .env`
-2. replace required secrets
-3. `make check-env`
-4. `make up`
-5. `make smoke`
-6. `SERVER_ADDRESS=127.0.0.1:8081 make run-server`
+2. `./scripts/check-env.sh .env`
+3. start the core stack with the repo Compose files
+4. optionally enable the optional stack only when needed
+5. `make migrate-up`
+6. `make run-server`
 7. verify `/healthz`, `/readyz`, `/version`
 8. open `/ops`
 9. validate ops APIs
 10. run maintenance/scheduler actions
-11. run quality checks if needed
 
 ---
 
-## 16. What a successful deployment looks like
+## 15. What a successful deployment looks like
 
 A deployment is in good shape if:
 
-- foundation stack starts cleanly
-- smoke checks pass
+- core stack starts cleanly
+- Postgres, Redis, and NATS are healthy
 - `clawbot-server` starts without migration errors
 - health/readiness endpoints pass
 - version endpoint shows real metadata
@@ -478,13 +499,11 @@ A deployment is in good shape if:
 
 This guide is the single deployment and operations entry point for `clawbot-server`.
 
-It covers:
-- environment setup
-- foundation stack startup
-- service execution
-- health verification
-- Operations Console access
-- basic API and action validation
-- common troubleshooting
+It reflects the repository-native deployment model:
 
-Use this as the primary onboarding document for deploying and validating `clawbot-server`.
+- `docker-compose.yml` = core only
+- `docker-compose.override.yml` = local dev tweaks for core only
+- `docker-compose.optional.yml` = optional services
+
+Use the core stack by default.
+Enable optional services only when your deployment actually needs them.

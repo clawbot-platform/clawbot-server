@@ -1,0 +1,150 @@
+services:
+  minio:
+    image: ${MINIO_IMAGE}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    ports:
+      - "${MINIO_HOST}:${MINIO_PORT}:9000"
+      - "${MINIO_HOST}:${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live; else curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; fi",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - foundation
+
+  omniroute:
+    image: ${OMNIROUTE_IMAGE}
+    restart: unless-stopped
+    environment:
+      PORT: ${OMNIROUTE_PORT}
+      NEXT_PUBLIC_BASE_URL: ${OMNIROUTE_BASE_URL}
+      NODE_ENV: production
+    ports:
+      - "${OMNIROUTE_HOST}:${OMNIROUTE_PORT}:20128"
+    volumes:
+      - omniroute_data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:20128/').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - foundation
+
+  zeroclaw:
+    build:
+      context: ./.
+      dockerfile: deploy/docker/zeroclaw/Dockerfile
+      args:
+        ZEROCLAW_VERSION: ${ZEROCLAW_VERSION}
+    restart: unless-stopped
+    environment:
+      ZEROCLAW_PORT: ${ZEROCLAW_PORT}
+      ZEROCLAW_PROVIDER: ${ZEROCLAW_PROVIDER}
+      ZEROCLAW_API_URL: ${ZEROCLAW_API_URL}
+      ZEROCLAW_API_KEY: ${ZEROCLAW_API_KEY}
+      ZEROCLAW_DEFAULT_MODEL: ${ZEROCLAW_DEFAULT_MODEL}
+      ZEROCLAW_GATEWAY_TOKEN: ${ZEROCLAW_GATEWAY_TOKEN}
+      RUST_LOG: ${ZEROCLAW_RUST_LOG}
+    ports:
+      - "${ZEROCLAW_HOST}:${ZEROCLAW_PORT}:3000"
+    volumes:
+      - zeroclaw_workspace:/workspace
+      - ././configs/zeroclaw/config.toml.tmpl:/etc/zeroclaw/config.toml.tmpl:ro
+    depends_on:
+      omniroute:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null http://127.0.0.1:3000/health; else curl -fsS http://127.0.0.1:3000/health >/dev/null; fi",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - foundation
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE}
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_HOST}:${PROMETHEUS_PORT}:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ././configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null http://127.0.0.1:9090/-/ready; else curl -fsS http://127.0.0.1:9090/-/ready >/dev/null; fi",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - foundation
+
+  grafana:
+    image: ${GRAFANA_IMAGE}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    ports:
+      - "${GRAFANA_HOST}:${GRAFANA_PORT}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ././configs/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null http://127.0.0.1:3000/api/health; else curl -fsS http://127.0.0.1:3000/api/health >/dev/null; fi",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - foundation
+
+networks:
+  foundation:
+    driver: bridge
+
+volumes:
+  minio_data:
+  omniroute_data:
+  zeroclaw_workspace:
+  prometheus_data:
+  grafana_data:

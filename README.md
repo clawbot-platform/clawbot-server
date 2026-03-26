@@ -6,132 +6,141 @@
 [![docker-compose-validate](https://github.com/clawbot-platform/clawbot-server/actions/workflows/docker-compose-validate.yml/badge.svg)](https://github.com/clawbot-platform/clawbot-server/actions/workflows/docker-compose-validate.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=clawbot-platform_clawbot-server&metric=alert_status&token=a62881a65b052737ef2b8b6c8a7ccf13f3e3764f)](https://sonarcloud.io/summary/new_code?id=clawbot-platform_clawbot-server)
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
-![Docker Compose](https://img.shields.io/badge/Docker_Compose-Local_Stack-2496ED?logo=docker)
+![Docker Compose](https://img.shields.io/badge/Docker_Compose-Core_Stack-2496ED?logo=docker)
 ![Postgres](https://img.shields.io/badge/Postgres-pgvector-4169E1?logo=postgresql)
 ![Redis](https://img.shields.io/badge/Redis-Cache-DC382D?logo=redis)
 ![NATS](https://img.shields.io/badge/NATS-Messaging-27AAE1)
-![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus)
-![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?logo=grafana)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
-`clawbot-server` is a reusable Go-first platform foundation for teams that need a local runtime stack, a small control plane, and a clean operational base without baking product-specific domain logic into the platform layer.
+`clawbot-server` is a reusable Go-first control-plane foundation for Clawbot-based systems.
 
-It belongs to the broader `clawbot-platform` organization, but it is not tied to any single downstream project or evaluation effort.
+It is designed to provide:
+- a small HTTP control plane
+- embedded database migrations
+- operational APIs and endpoints
+- a minimal operations console
+- a reusable platform base that is not tied to any one downstream project
+
+It belongs to the broader `clawbot-platform` organization, but it is not coupled to a single vertical such as DRQ or Trust Lab.
 
 ## What this repository provides
 
-`clawbot-server` is the reusable server and control-plane foundation for Clawbot-based systems.
+`clawbot-server` provides:
 
-It provides:
 - a Go-first HTTP control-plane service
 - embedded database migrations
 - runtime APIs and operational endpoints
 - a minimal operations console for platform operators
 - local development and validation workflows
-- a foundation stack that can be reused by projects beyond Clawbot Trust Lab
+- a reusable foundation stack for projects beyond Clawbot Trust Lab
 
 ## Local foundation stack
 
-For local development, smoke testing, and platform validation, this repository can bring up a broader supporting stack that may include:
+This repository uses a **core vs optional** Docker Compose split.
+
+### Core stack
+
+The default/core stack is:
 
 - Postgres
 - Redis
 - NATS
+
+This is the recommended foundation for:
+- local development
+- smoke testing
+- control-plane validation
+- DRQ Version 1 dry runs
+
+### Optional stack
+
+Optional services are available through a separate Compose file:
+
 - MinIO
-- Prometheus
-- Grafana
 - OmniRoute
 - ZeroClaw
+- Prometheus
+- Grafana
 
-These services should be understood as **supporting platform components for local stack bring-up, validation, and observability**, not as a claim that every one of them is a hard runtime dependency of the core `clawbot-server` process in every deployment.
+These services are useful for:
+- artifact storage
+- extended runtime integrations
+- observability
+- dashboarding
 
-In practice:
+They are **not required** for the lean `clawbot-server` deployment path.
 
-- **Postgres** is part of the core server story because the service uses embedded migrations and database-backed runtime behavior.
-- **Redis** and **NATS** are part of the broader platform stack and may support messaging, caching, or future integrations depending on the deployment.
-- **Prometheus** and **Grafana** are observability components used for monitoring and local platform visibility.
-- **MinIO**, **OmniRoute**, and **ZeroClaw** are part of the extended local foundation and integration story, not mandatory requirements for every consumer of `clawbot-server`.
+### Current local execution model
 
-## Deployment interpretation
+The default local workflow is:
 
-When evaluating this repository, use the following distinction:
+- **infrastructure in Docker**
+- **`clawbot-server` on the host**
 
-- **Core service**: the `clawbot-server` binary and the dependencies required for its current control-plane responsibilities
-- **Foundation stack**: the broader local platform services used for development, smoke tests, integration validation, and observability
+That means:
+- Docker Compose starts the core foundation services
+- `make migrate-up` and `make run-server` run the control-plane binary locally against that stack
 
-This distinction is important because `clawbot-server` is intended to remain a **reusable foundation** for many projects, not something tied only to one domain-specific stack.
-
-This makes the repo suitable for:
-
-- agent platform foundations
-- internal automation backplanes
-- evaluation harnesses
-- control-plane services for vertical applications
-- local-first integration environments for downstream systems
-
-## Clawbot Operations Console v1
-
-`clawbot-server` now includes a small generic operations surface for platform operators.
-
-It is intentionally narrow. It answers:
-
-- Is the platform healthy?
-- Which services or Clawbots are healthy, degraded, down, or in maintenance?
-- Which schedulers are active?
-- What failed recently?
-- Can an operator safely pause, resume, or trigger one run of a scheduler?
-
-The console is available in two forms:
-
-- JSON APIs under `/api/v1/ops/*`
-- a server-rendered operator UI under `/ops`
-
-The console is generic. It is meant to monitor `clawbot-server`, sibling services such as `clawmem`, and any future app or worker that can be surfaced through the same status model.
-
-## What this repository does not provide
-
-`clawbot-server` intentionally does not own:
-
-- vertical business logic
-- vertical-specific orchestration
-- fraud or risk engines
-- replay or benchmark logic
-- memory-engine internals
-- custom replacements for ZeroClaw runtime features
-- custom replacements for OmniRoute routing features
-
-That separation is deliberate. The server stays generic so other projects can reuse it without inheriting assumptions from any single downstream consumer.
+This is the current supported repo-native workflow.
 
 ## Quick start
 
-Bring up the shared stack:
+### 1. Prepare the environment file
 
 ```bash
 cp .env.example .env
-make up
 ```
 
-Apply embedded schema changes and run the service:
+Validate the **core** environment:
+
+```bash
+./scripts/check-env.sh .env
+```
+
+Validate **core + optional** only if you plan to use the optional compose file:
+
+```bash
+VALIDATE_OPTIONAL_STACK=1 ./scripts/check-env.sh .env
+```
+
+### 2. Start the core stack
+
+```bash
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  up -d
+```
+
+### 3. Start the optional stack only when needed
+
+```bash
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  -f deploy/compose/docker-compose.optional.yml \
+  up -d
+```
+
+### 4. Run the control-plane service locally
 
 ```bash
 make migrate-up
 make run-server
 ```
 
-Validate the stack:
+### 5. Validate the stack
 
 ```bash
 make smoke
 make coverage
 ```
 
-Stop everything:
+Open the operations console in a browser at:
 
-```bash
-make down
+```text
+http://127.0.0.1:8080/ops
 ```
-
-Open the operations console in a browser at `http://127.0.0.1:8080/ops`.
 
 Validate it from the terminal:
 
@@ -142,69 +151,88 @@ curl http://127.0.0.1:8080/api/v1/ops/schedulers
 curl http://127.0.0.1:8080/api/v1/ops/events
 ```
 
-## How to use this in any project
+### 6. Stop the stack
 
-1. Start the infrastructure stack from this repo.
-2. Point your own project at the services it needs: Postgres, Redis, NATS, MinIO, OmniRoute, ZeroClaw, or the HTTP control plane.
-3. Use the generic `/api/v1` endpoints for run, bot, policy, and audit lifecycle data when they fit your workflow.
-4. Keep domain models, product rules, and vertical orchestration in your own repository.
-
-Typical consumers could include:
-
-- a domain-specific evaluation harness
-- an internal automation system
-- an operations control plane
-- a non-Clawbot service that needs a local-first foundation and lightweight platform API
-- a small operations console for shared platform health and safe scheduler controls
-
-## Quality and validation
-
-Local validation:
+Stop core stack:
 
 ```bash
-go test ./...
-go vet ./...
-golangci-lint run ./...
-make coverage
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  down
 ```
 
-Optional local security tooling when installed:
+Stop core + optional stack:
 
 ```bash
-make security
+docker compose --env-file .env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.override.yml \
+  -f deploy/compose/docker-compose.optional.yml \
+  down
 ```
 
-CI includes:
+## Core vs Optional Services
 
-- formatting checks
-- `go vet`
-- `golangci-lint`
-- unit tests with coverage
-- `gosec`
-- `govulncheck`
-- secret scanning
-- filesystem scanning
-- SonarCloud analysis and quality gate enforcement
+`clawbot-server` is designed to work as a reusable control-plane foundation for multiple Clawbot-based systems.
 
-SonarCloud:
+Not every service in the broader foundation stack is required for every deployment.
 
-- organization: `clawbot-platform`
-- project key: `clawbot-platform_clawbot-server`
-- project page: [SonarCloud overview](https://sonarcloud.io/project/overview?id=clawbot-platform_clawbot-server)
+### Recommended service matrix
 
-## Repository layout
+| Service        | Role                        | Recommendation for generic `clawbot-server` | Why                                                                                                           |
+|----------------|-----------------------------|---------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| **Postgres**   | durable control-plane state | **Core**                                    | source of truth for runs, scheduler/control-plane state, and persistent platform data                         |
+| **Redis**      | cache / coordination        | **Core**                                    | useful for short-lived coordination, cached state, and runtime support                                        |
+| **NATS**       | event bus / async signaling | **Core**                                    | strong fit for multi-Clawbot orchestration and decoupled control-plane events                                 |
+| **Prometheus** | metrics collection          | **Optional production-ops layer**           | useful for observability, but not required for a lean deployment                                              |
+| **Grafana**    | dashboards / visualization  | **Optional production-ops layer**           | useful for management and operational dashboards, but not required for a lean deployment                      |
+| **MinIO**      | artifact / object storage   | **Optional artifact layer**                 | useful later for reports, audit exports, and replay bundles, but not required for the current lean deployment |
+| **OmniRoute**  | model gateway               | **Optional runtime integration layer**      | useful for extended model-routing workflows, but not required for the lean control-plane stack                |
+| **ZeroClaw**   | runtime substrate           | **Optional runtime integration layer**      | useful for broader agent-runtime experiments, but not required for the lean control-plane stack               |
 
-- `cmd/clawbot-server/` contains the service entrypoint.
-- `cmd/stack-smoke/` contains the Go reachability checker used by scripts and CI.
-- `internal/app/` wires config, database access, router setup, and graceful shutdown.
-- `internal/http/` contains handlers, routes, and middleware.
-- `internal/platform/` contains generic platform services for runs, bots, policies, scheduler intent, audit, and common store helpers.
-- `internal/db/` contains embedded migrations.
-- `deploy/compose/` contains the local foundation stack definitions.
-- `deploy/docker/` contains Docker-related assets used by the stack.
-- `configs/` contains versioned configuration templates and provisioning.
-- `docs/` contains contributor-facing platform documentation.
-- `scripts/` contains operational helpers for CI and local workflows.
+### DRQ Version 1 note
+
+**Version 1 of DRQ uses only the core `clawbot-server` foundation.**
+
+That means DRQ Version 1 requires:
+
+- Postgres
+- Redis
+- NATS
+- `clawbot-server`
+
+It does **not** require:
+
+- MinIO
+- Prometheus
+- Grafana
+- OmniRoute
+- ZeroClaw
+
+### Recommended deployment guidance
+
+For the **24-hour dry run** and **1-week DRQ Version 1 run**, keep the stack lean and enable only the core services unless you explicitly want additional observability, artifact storage, or runtime integrations.
+
+This helps:
+- reduce container count
+- simplify deployment
+- reduce moving parts during benchmark validation
+- keep Version 1 aligned with its current supported scope
+
+## How to use this in other projects
+
+`clawbot-server` can be used as the reusable control-plane foundation for projects beyond DRQ.
+
+A downstream project typically needs to:
+1. run the core stack
+2. run `clawbot-server`
+3. point its own services or workers at the control plane
+4. enable optional services only when the project actually needs them
+
+Use:
+- the core stack for durable control-plane state and coordination
+- the optional stack only for projects that benefit from artifact storage, runtime integrations, or observability
 
 ## Deployment Guide
 
@@ -213,8 +241,9 @@ For a single-document deployment and operations walkthrough, see:
 - [Deploying Clawbot Server](docs/deploying-clawbot-server.md)
 
 This guide covers:
-- `.env` setup
-- foundation stack startup
+- `.env` setup for the core vs optional split
+- environment validation with `check-env.sh`
+- foundation stack startup using the repo Compose files
 - running `clawbot-server`
 - health and version checks
 - Operations Console access
@@ -230,6 +259,7 @@ This guide covers:
 - [Ports and services](./docs/ports-and-services.md)
 - [Security](./docs/security.md)
 - [Development](./docs/development.md)
+- [Deployment guide](./docs/deploying-clawbot-server.md)
 
 ## License
 

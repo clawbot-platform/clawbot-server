@@ -2,13 +2,14 @@
 set -eu
 
 ENV_FILE="${1:-.env}"
+VALIDATE_OPTIONAL_STACK="${VALIDATE_OPTIONAL_STACK:-0}"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Missing $ENV_FILE. Copy .env.example to $ENV_FILE first."
   exit 1
 fi
 
-required_vars="
+core_required_vars="
 COMPOSE_PROJECT_NAME
 POSTGRES_IMAGE
 POSTGRES_HOST
@@ -23,6 +24,16 @@ NATS_IMAGE
 NATS_HOST
 NATS_PORT
 NATS_MONITOR_PORT
+STACK_SMOKE_TIMEOUT
+APP_ENV
+SERVER_ADDRESS
+LOG_LEVEL
+AUTO_MIGRATE
+SHUTDOWN_TIMEOUT
+DATABASE_URL
+"
+
+optional_required_vars="
 MINIO_IMAGE
 MINIO_HOST
 MINIO_PORT
@@ -50,13 +61,6 @@ ZEROCLAW_API_KEY
 ZEROCLAW_DEFAULT_MODEL
 ZEROCLAW_GATEWAY_TOKEN
 ZEROCLAW_RUST_LOG
-STACK_SMOKE_TIMEOUT
-APP_ENV
-SERVER_ADDRESS
-LOG_LEVEL
-AUTO_MIGRATE
-SHUTDOWN_TIMEOUT
-DATABASE_URL
 "
 
 # shellcheck disable=SC1090
@@ -67,19 +71,30 @@ case "$ENV_FILE" in
 esac
 set +a
 
-for var in $required_vars; do
-  eval "value=\${$var:-}"
-  if [ -z "$value" ]; then
-    echo "ERROR: Required variable '$var' is missing or empty."
-    exit 1
-  fi
+validate_vars() {
+  required_vars="$1"
 
-  case "$value" in
-    *REQUIRED_SECRET*|*replace_me*)
-      echo "ERROR: Variable '$var' still contains a placeholder value."
+  for var in $required_vars; do
+    eval "value=\${$var:-}"
+    if [ -z "$value" ]; then
+      echo "ERROR: Required variable '$var' is missing or empty."
       exit 1
-      ;;
-  esac
-done
+    fi
 
-echo "Environment file validation passed: $ENV_FILE"
+    case "$value" in
+      *REQUIRED_SECRET*|*replace_me*)
+        echo "ERROR: Variable '$var' still contains a placeholder value."
+        exit 1
+        ;;
+    esac
+  done
+}
+
+validate_vars "$core_required_vars"
+
+if [ "$VALIDATE_OPTIONAL_STACK" = "1" ]; then
+  validate_vars "$optional_required_vars"
+  echo "Environment file validation passed for core + optional stack: $ENV_FILE"
+else
+  echo "Environment file validation passed for core stack: $ENV_FILE"
+fi
