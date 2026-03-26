@@ -415,3 +415,135 @@ func assertRedirect(t *testing.T, handler http.Handler, method string, path stri
 		t.Fatalf("%s %s: expected redirect to %s, got %d %s", method, path, want, resp.Code, resp.Header().Get("Location"))
 	}
 }
+func TestSafeOpsRedirectTarget(t *testing.T) {
+	t.Run("falls back when referer missing", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "127.0.0.1:8081"
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		if got != opsServicesPath {
+			t.Fatalf("expected %q, got %q", opsServicesPath, got)
+		}
+	})
+
+	t.Run("allows same-origin list page", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "127.0.0.1:8081"
+		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/services")
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		if got != opsServicesPath {
+			t.Fatalf("expected %q, got %q", opsServicesPath, got)
+		}
+	})
+
+	t.Run("allows same-origin service detail page", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "127.0.0.1:8081"
+		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/services/service-1")
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		want := "/ops/services/service-1"
+		if got != want {
+			t.Fatalf("expected %q, got %q", want, got)
+		}
+	})
+
+	t.Run("allows same-origin scheduler detail page", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/schedulers/scheduler-1/pause", nil)
+		req.Host = "127.0.0.1:8081"
+		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/schedulers/scheduler-1")
+
+		got := safeOpsRedirectTarget(req, opsSchedulersPath)
+		want := "/ops/schedulers/scheduler-1"
+		if got != want {
+			t.Fatalf("expected %q, got %q", want, got)
+		}
+	})
+
+	t.Run("preserves query string on allowed ops route", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "127.0.0.1:8081"
+		req.Header.Set("Referer", "http://127.0.0.1:8081/ops/services/service-1?tab=details")
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		want := "/ops/services/service-1?tab=details"
+		if got != want {
+			t.Fatalf("expected %q, got %q", want, got)
+		}
+	})
+
+	t.Run("rejects external referer", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "127.0.0.1:8081"
+		req.Header.Set("Referer", "https://evil.example.com/ops/services/service-1")
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		if got != opsServicesPath {
+			t.Fatalf("expected fallback %q, got %q", opsServicesPath, got)
+		}
+	})
+
+	t.Run("rejects non-ops path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "127.0.0.1:8081"
+		req.Header.Set("Referer", "http://127.0.0.1:8081/admin")
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		if got != opsServicesPath {
+			t.Fatalf("expected fallback %q, got %q", opsServicesPath, got)
+		}
+	})
+
+	t.Run("rejects malformed referer", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "127.0.0.1:8081"
+		req.Header.Set("Referer", "http://%zz")
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		if got != opsServicesPath {
+			t.Fatalf("expected fallback %q, got %q", opsServicesPath, got)
+		}
+	})
+
+	t.Run("uses x-forwarded-host when present", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/ops/services/service-1/maintenance", nil)
+		req.Host = "internal-proxy:8080"
+		req.Header.Set("X-Forwarded-Host", "ops.example.internal")
+		req.Header.Set("Referer", "https://ops.example.internal/ops/services/service-1")
+
+		got := safeOpsRedirectTarget(req, opsServicesPath)
+		want := "/ops/services/service-1"
+		if got != want {
+			t.Fatalf("expected %q, got %q", want, got)
+		}
+	})
+}
+
+func TestNormalizeOpsRedirectTarget(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{name: "overview", input: "/ops", expect: "/ops"},
+		{name: "services", input: "/ops/services", expect: "/ops/services"},
+		{name: "service detail", input: "/ops/services/service-1", expect: "/ops/services/service-1"},
+		{name: "schedulers", input: "/ops/schedulers", expect: "/ops/schedulers"},
+		{name: "scheduler detail", input: "/ops/schedulers/scheduler-1", expect: "/ops/schedulers/scheduler-1"},
+		{name: "events", input: "/ops/events", expect: "/ops/events"},
+		{name: "reject external absolute", input: "https://evil.example.com/ops/services", expect: ""},
+		{name: "reject non ops", input: "/admin", expect: ""},
+		{name: "reject traversal", input: "/ops/../admin", expect: ""},
+		{name: "trim spaces", input: " /ops/services/service-1 ", expect: "/ops/services/service-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeOpsRedirectTarget(tt.input)
+			if got != tt.expect {
+				t.Fatalf("expected %q, got %q", tt.expect, got)
+			}
+		})
+	}
+}
