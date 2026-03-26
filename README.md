@@ -4,7 +4,7 @@
 [![quality](https://github.com/clawbot-platform/clawbot-server/actions/workflows/quality.yml/badge.svg)](https://github.com/clawbot-platform/clawbot-server/actions/workflows/quality.yml)
 [![security](https://github.com/clawbot-platform/clawbot-server/actions/workflows/security.yml/badge.svg)](https://github.com/clawbot-platform/clawbot-server/actions/workflows/security.yml)
 [![docker-compose-validate](https://github.com/clawbot-platform/clawbot-server/actions/workflows/docker-compose-validate.yml/badge.svg)](https://github.com/clawbot-platform/clawbot-server/actions/workflows/docker-compose-validate.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=clawbot-platform_clawbot-server&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=clawbot-platform_clawbot-server)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=clawbot-platform_clawbot-server&metric=alert_status&token=a62881a65b052737ef2b8b6c8a7ccf13f3e3764f)](https://sonarcloud.io/summary/new_code?id=clawbot-platform_clawbot-server)
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
 ![Docker Compose](https://img.shields.io/badge/Docker_Compose-Local_Stack-2496ED?logo=docker)
 ![Postgres](https://img.shields.io/badge/Postgres-pgvector-4169E1?logo=postgresql)
