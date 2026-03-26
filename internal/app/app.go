@@ -13,10 +13,12 @@ import (
 	"clawbot-server/internal/http/routes"
 	"clawbot-server/internal/platform/audit"
 	"clawbot-server/internal/platform/bots"
+	"clawbot-server/internal/platform/ops"
 	"clawbot-server/internal/platform/policies"
 	"clawbot-server/internal/platform/runs"
 	"clawbot-server/internal/platform/scheduler"
 	"clawbot-server/internal/platform/store"
+	"clawbot-server/internal/version"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,13 +53,15 @@ func RunServer(ctx context.Context, cfg config.Server, logger *slog.Logger) erro
 	}
 
 	pg := store.NewPostgres(pool)
-	services := buildServices(pg)
+	buildInfo := version.Current()
+	services := buildServices(pg, buildInfo)
 	router := routes.New(logger, routes.Services{
 		System:    routes.NewSystemHandler(pg.Ping),
 		Runs:      services.runs,
 		Bots:      services.bots,
 		Policies:  services.policies,
 		Dashboard: services.dashboard,
+		Ops:       services.ops,
 	})
 
 	server := &http.Server{
@@ -109,9 +113,10 @@ type appServices struct {
 	bots      bots.Service
 	policies  policies.Service
 	dashboard *store.DashboardReader
+	ops       *ops.Manager
 }
 
-func buildServices(pg *store.Postgres) appServices {
+func buildServices(pg *store.Postgres, buildInfo version.Info) appServices {
 	auditRepo := audit.NewPostgresRepository()
 	audits := audit.NewService(auditRepo)
 	schedulerService := scheduler.NewPlaceholderService(audits)
@@ -125,5 +130,6 @@ func buildServices(pg *store.Postgres) appServices {
 		bots:      bots.NewManager(pg.Pool(), pg, botsRepo, audits),
 		policies:  policies.NewManager(pg.Pool(), pg, policiesRepo, audits),
 		dashboard: store.NewDashboardReader(pg.Pool()),
+		ops:       ops.NewManager(buildInfo),
 	}
 }

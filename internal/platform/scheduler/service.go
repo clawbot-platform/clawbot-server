@@ -35,7 +35,7 @@ func (s *PlaceholderService) RecordRunIntent(ctx context.Context, q store.DBTX, 
 		"run_name": signal.RunName,
 		"status":   signal.Status,
 		"reason":   signal.Reason,
-		"note":     "Phase 1 records scheduling intent only. Execution belongs to later integrations.",
+		"note":     "This scheduler records run intent only. Execution belongs to downstream integrations.",
 	})
 	if err != nil {
 		return fmt.Errorf("marshal scheduler intent payload: %w", err)

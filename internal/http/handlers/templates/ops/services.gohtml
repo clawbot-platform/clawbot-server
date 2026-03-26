@@ -1,0 +1,38 @@
+{{ define "services-content" }}
+<section class="page-header">
+  <div>
+    <h2>Services / Clawbots</h2>
+    <p>Track current service health, maintenance posture, and the latest dependency signal from the shared foundation.</p>
+  </div>
+  <div class="muted">Updated {{ formatTime .Overview.LastUpdatedAt }}</div>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Type</th><th>Status</th><th>Version</th><th>Uptime</th><th>Last heartbeat</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      {{ range .Services }}
+      <tr>
+        <td><a href="/ops/services/{{ .ID }}">{{ .Name }}</a></td>
+        <td>{{ .ServiceType }}</td>
+        <td><span class="status-pill {{ statusClass .Status }}">{{ .Status }}</span></td>
+        <td>{{ .Version }}</td>
+        <td>{{ formatUptime .UptimeSeconds }}</td>
+        <td>{{ formatTime .LastHeartbeatAt }}</td>
+        <td>
+          <div class="actions">
+            {{ if .MaintenanceMode }}
+            <form method="post" action="/ops/services/{{ .ID }}/resume"><button type="submit">Resume</button></form>
+            {{ else }}
+            <form method="post" action="/ops/services/{{ .ID }}/maintenance"><button type="submit">Maintenance</button></form>
+            {{ end }}
+          </div>
+        </td>
+      </tr>
+      {{ end }}
+    </tbody>
+  </table>
+</section>
+{{ end }}

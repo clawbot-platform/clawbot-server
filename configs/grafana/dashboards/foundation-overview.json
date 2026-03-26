@@ -133,10 +133,10 @@
       },
       "id": 3,
       "options": {
-        "content": "Phase 0 exposes a baseline observability stack only. Additional exporters and service-specific dashboards can be added in later phases without changing the foundation topology.",
+        "content": "The foundation stack exposes a baseline observability layer only. Additional exporters and service-specific dashboards can be added later without changing the topology.",
         "mode": "markdown"
       },
-      "title": "Phase 0 Scope",
+      "title": "Foundation Scope",
       "type": "text"
     }
   ],
@@ -144,7 +144,7 @@
   "style": "dark",
   "tags": [
     "foundation",
-    "phase-0"
+    "foundation"
   ],
   "templating": {
     "list": []

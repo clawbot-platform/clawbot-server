@@ -1,0 +1,206 @@
+{{ define "base" }}
+    <!doctype html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Clawbot Operations Console</title>
+        <style>
+            :root {
+                color-scheme: light;
+                --bg: #f4f6f8;
+                --surface: #ffffff;
+                --text: #15212b;
+                --muted: #5a6774;
+                --border: #d7dde4;
+                --primary: #0d5bd7;
+                --healthy: #1f8f4e;
+                --degraded: #c98114;
+                --down: #b42318;
+                --maintenance: #475467;
+            }
+            * { box-sizing: border-box; }
+            body {
+                margin: 0;
+                font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                background: var(--bg);
+                color: var(--text);
+            }
+            a { color: var(--primary); text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            .shell {
+                display: grid;
+                grid-template-columns: 240px 1fr;
+                min-height: 100vh;
+            }
+            nav {
+                background: #0f1720;
+                color: #e7edf3;
+                padding: 24px 20px;
+            }
+            nav h1 {
+                margin: 0 0 8px;
+                font-size: 1.1rem;
+            }
+            nav p {
+                color: #adc0d3;
+                font-size: 0.95rem;
+                line-height: 1.4;
+                margin: 0 0 20px;
+            }
+            nav ul {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                gap: 8px;
+            }
+            nav a {
+                display: block;
+                color: #dce7f1;
+                padding: 10px 12px;
+                border-radius: 10px;
+                background: rgba(255,255,255,0.03);
+            }
+            nav a.active {
+                background: rgba(13,91,215,0.35);
+            }
+            main {
+                padding: 28px;
+                display: grid;
+                gap: 20px;
+            }
+            .page-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: end;
+                gap: 16px;
+            }
+            .page-header h2 {
+                margin: 0;
+                font-size: 1.8rem;
+            }
+            .page-header p {
+                margin: 6px 0 0;
+                color: var(--muted);
+            }
+            .cards {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 12px;
+            }
+            .card, .panel {
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 16px;
+                box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+            }
+            .metric {
+                font-size: 1.7rem;
+                font-weight: 700;
+                margin: 4px 0;
+            }
+            .muted {
+                color: var(--muted);
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            th, td {
+                text-align: left;
+                padding: 12px 10px;
+                border-bottom: 1px solid var(--border);
+                vertical-align: top;
+            }
+            th { color: var(--muted); font-weight: 600; font-size: 0.92rem; }
+            .status-pill {
+                display: inline-flex;
+                align-items: center;
+                border-radius: 999px;
+                padding: 3px 10px;
+                font-size: 0.86rem;
+                font-weight: 600;
+                border: 1px solid transparent;
+            }
+            .status-healthy { background: rgba(31,143,78,0.1); color: var(--healthy); border-color: rgba(31,143,78,0.2); }
+            .status-degraded { background: rgba(201,129,20,0.1); color: var(--degraded); border-color: rgba(201,129,20,0.2); }
+            .status-down { background: rgba(180,35,24,0.1); color: var(--down); border-color: rgba(180,35,24,0.2); }
+            .status-maintenance { background: rgba(71,84,103,0.1); color: var(--maintenance); border-color: rgba(71,84,103,0.2); }
+            .actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            button {
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                background: white;
+                padding: 8px 12px;
+                cursor: pointer;
+                font: inherit;
+            }
+            button:hover {
+                border-color: var(--primary);
+                color: var(--primary);
+            }
+            .grid-two {
+                display: grid;
+                grid-template-columns: 1.4fr 1fr;
+                gap: 16px;
+            }
+            .list {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                display: grid;
+                gap: 10px;
+            }
+            .list li {
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 12px;
+                background: #fbfcfd;
+            }
+            @media (max-width: 960px) {
+                .shell { grid-template-columns: 1fr; }
+                nav { padding-bottom: 12px; }
+                .grid-two { grid-template-columns: 1fr; }
+            }
+        </style>
+    </head>
+    <body>
+    <div class="shell">
+        <nav>
+            <h1>Operations Console</h1>
+            <p>Generic platform health, service status, scheduler control, and recent activity.</p>
+            <ul>
+                <li><a class="{{ if eq .CurrentPath "/ops" }}active{{ end }}" href="/ops">Overview</a></li>
+                <li><a class="{{ if eq .CurrentPath "/ops/services" }}active{{ end }}" href="/ops/services">Services</a></li>
+                <li><a class="{{ if eq .CurrentPath "/ops/schedulers" }}active{{ end }}" href="/ops/schedulers">Schedulers</a></li>
+                <li><a class="{{ if eq .CurrentPath "/ops/events" }}active{{ end }}" href="/ops/events">Recent activity</a></li>
+            </ul>
+        </nav>
+        <main>
+            {{ if eq .ContentTemplate "overview-content" -}}
+                {{ template "overview-content" . }}
+            {{ else if eq .ContentTemplate "services-content" -}}
+                {{ template "services-content" . }}
+            {{ else if eq .ContentTemplate "service-detail-content" -}}
+                {{ template "service-detail-content" . }}
+            {{ else if eq .ContentTemplate "schedulers-content" -}}
+                {{ template "schedulers-content" . }}
+            {{ else if eq .ContentTemplate "events-content" -}}
+                {{ template "events-content" . }}
+            {{ else -}}
+                <section class="panel">
+                    <h2>Unknown page</h2>
+                    <p class="muted">The requested console page could not be rendered.</p>
+                </section>
+            {{ end -}}
+        </main>
+    </div>
+    </body>
+    </html>
+{{ end }}

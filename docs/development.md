@@ -3,10 +3,10 @@
 ## Local workflow
 
 1. Copy `.env.example` to `.env`.
-2. Start the shared platform stack with `make up`.
-3. Apply database migrations with `make migrate-up`.
+2. Start the shared stack with `make up`.
+3. Apply migrations with `make migrate-up`.
 4. Run the control-plane service with `make run-server`.
-5. Optionally wait for readiness with `make smoke`.
+5. Optionally verify readiness with `make smoke`.
 6. Inspect services with `make ps` or `make logs`.
 
 ## Make targets
@@ -32,4 +32,5 @@
 - Put compose files under `deploy/compose`.
 - Put versioned configs under `configs`.
 - Keep docs explicit and recruiter-friendly.
-- Do not add domain logic that belongs in `clawbot-trust-lab` or `clawmem`.
+- Keep downstream business logic outside this repository.
+- Treat downstream verticals as consumer examples, not design constraints.

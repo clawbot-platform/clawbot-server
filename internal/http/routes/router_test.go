@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"clawbot-server/internal/platform/bots"
+	"clawbot-server/internal/platform/ops"
 	"clawbot-server/internal/platform/policies"
 	"clawbot-server/internal/platform/runs"
 	"clawbot-server/internal/platform/store"
@@ -62,6 +63,42 @@ func (dashboardStub) Summary(context.Context) (store.DashboardSummary, error) {
 	return store.DashboardSummary{Runs: 2, Bots: 3, Policies: 4, AuditEvents: 5}, nil
 }
 
+type opsStub struct{}
+
+func (opsStub) Overview(context.Context) (ops.Overview, error) {
+	return ops.Overview{Status: ops.StatusHealthy, ServicesTotal: 3}, nil
+}
+func (opsStub) ListServices(context.Context) ([]ops.ServiceStatus, error) {
+	return []ops.ServiceStatus{{ID: "svc-1", Name: "clawbot-server"}}, nil
+}
+func (opsStub) GetService(context.Context, string) (ops.ServiceStatus, error) {
+	return ops.ServiceStatus{ID: "svc-1", Name: "clawbot-server"}, nil
+}
+func (opsStub) SetMaintenance(context.Context, string, string) (ops.ServiceStatus, error) {
+	return ops.ServiceStatus{ID: "svc-1", Name: "clawbot-server", MaintenanceMode: true}, nil
+}
+func (opsStub) ResumeService(context.Context, string, string) (ops.ServiceStatus, error) {
+	return ops.ServiceStatus{ID: "svc-1", Name: "clawbot-server"}, nil
+}
+func (opsStub) ListSchedulers(context.Context) ([]ops.SchedulerStatus, error) {
+	return []ops.SchedulerStatus{{ID: "sch-1", Name: "sync"}}, nil
+}
+func (opsStub) GetScheduler(context.Context, string) (ops.SchedulerStatus, error) {
+	return ops.SchedulerStatus{ID: "sch-1", Name: "sync"}, nil
+}
+func (opsStub) PauseScheduler(context.Context, string, string) (ops.SchedulerStatus, error) {
+	return ops.SchedulerStatus{ID: "sch-1", Name: "sync"}, nil
+}
+func (opsStub) ResumeScheduler(context.Context, string, string) (ops.SchedulerStatus, error) {
+	return ops.SchedulerStatus{ID: "sch-1", Name: "sync", Enabled: true}, nil
+}
+func (opsStub) RunSchedulerOnce(context.Context, string, string) (ops.SchedulerStatus, error) {
+	return ops.SchedulerStatus{ID: "sch-1", Name: "sync", LastResult: ops.ResultManualTriggered}, nil
+}
+func (opsStub) ListEvents(context.Context) ([]ops.ActivityEvent, error) {
+	return []ops.ActivityEvent{{ID: "evt-1", Source: "svc-1"}}, nil
+}
+
 func TestNewRoutesSystemAndDashboardEndpoints(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	router := New(logger, Services{
@@ -70,6 +107,7 @@ func TestNewRoutesSystemAndDashboardEndpoints(t *testing.T) {
 		Bots:      botsStub{},
 		Policies:  policiesStub{},
 		Dashboard: dashboardStub{},
+		Ops:       opsStub{},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -101,6 +139,20 @@ func TestNewRoutesSystemAndDashboardEndpoints(t *testing.T) {
 	}
 	if payload.Data.AuditEvents != 5 {
 		t.Fatalf("unexpected dashboard payload %#v", payload)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/ops/overview", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected ops overview 200, got %d", resp.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/ops", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected ops page 200, got %d", resp.Code)
 	}
 }
 

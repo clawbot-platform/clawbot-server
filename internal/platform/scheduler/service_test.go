@@ -24,7 +24,7 @@ func TestPlaceholderServiceRecordRunIntent(t *testing.T) {
 
 	err := service.RecordRunIntent(context.Background(), nil, Signal{
 		RunID:   "run-123",
-		RunName: "Phase 1",
+		RunName: "Baseline run",
 		Status:  "pending",
 		Actor:   "tester",
 		Reason:  "run.created",

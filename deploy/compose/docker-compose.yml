@@ -120,7 +120,7 @@ services:
     networks:
       - foundation
 
-  # ZeroClaw is integrated as the runtime substrate. Phase 0 wires it to
+  # ZeroClaw is integrated as the runtime substrate. The foundation stack wires it to
   # OmniRoute only; no repo-specific runtime or domain logic is added here.
   zeroclaw:
     build:

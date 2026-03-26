@@ -1,0 +1,3480 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>clawbot-server: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">clawbot-server/cmd/clawbot-server/main.go (0.0%)</option>
+				
+				<option value="file1">clawbot-server/cmd/stack-smoke/main.go (50.0%)</option>
+				
+				<option value="file2">clawbot-server/internal/app/app.go (23.9%)</option>
+				
+				<option value="file3">clawbot-server/internal/config/foundation.go (100.0%)</option>
+				
+				<option value="file4">clawbot-server/internal/config/server.go (87.5%)</option>
+				
+				<option value="file5">clawbot-server/internal/db/migrator.go (21.4%)</option>
+				
+				<option value="file6">clawbot-server/internal/http/handlers/bots.go (20.7%)</option>
+				
+				<option value="file7">clawbot-server/internal/http/handlers/common.go (100.0%)</option>
+				
+				<option value="file8">clawbot-server/internal/http/handlers/dashboard.go (0.0%)</option>
+				
+				<option value="file9">clawbot-server/internal/http/handlers/ops.go (94.8%)</option>
+				
+				<option value="file10">clawbot-server/internal/http/handlers/policies.go (20.7%)</option>
+				
+				<option value="file11">clawbot-server/internal/http/handlers/runs.go (37.9%)</option>
+				
+				<option value="file12">clawbot-server/internal/http/handlers/system.go (100.0%)</option>
+				
+				<option value="file13">clawbot-server/internal/http/middleware/logging.go (100.0%)</option>
+				
+				<option value="file14">clawbot-server/internal/http/middleware/request_id.go (100.0%)</option>
+				
+				<option value="file15">clawbot-server/internal/http/routes/router.go (98.3%)</option>
+				
+				<option value="file16">clawbot-server/internal/platform/audit/service.go (60.0%)</option>
+				
+				<option value="file17">clawbot-server/internal/platform/bots/repository.go (0.0%)</option>
+				
+				<option value="file18">clawbot-server/internal/platform/bots/service.go (75.4%)</option>
+				
+				<option value="file19">clawbot-server/internal/platform/ops/service.go (96.8%)</option>
+				
+				<option value="file20">clawbot-server/internal/platform/policies/repository.go (0.0%)</option>
+				
+				<option value="file21">clawbot-server/internal/platform/policies/service.go (77.8%)</option>
+				
+				<option value="file22">clawbot-server/internal/platform/runs/repository.go (0.0%)</option>
+				
+				<option value="file23">clawbot-server/internal/platform/runs/service.go (78.4%)</option>
+				
+				<option value="file24">clawbot-server/internal/platform/scheduler/service.go (80.0%)</option>
+				
+				<option value="file25">clawbot-server/internal/platform/store/dashboard.go (100.0%)</option>
+				
+				<option value="file26">clawbot-server/internal/platform/store/postgres.go (15.4%)</option>
+				
+				<option value="file27">clawbot-server/internal/version/version.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "context"
+        "fmt"
+        "log/slog"
+        "os"
+        "os/signal"
+        "syscall"
+
+        "clawbot-server/internal/app"
+        "clawbot-server/internal/config"
+)
+
+func main() <span class="cov0" title="0">{
+        cfg, err := config.LoadServerFromEnv()
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Fprintf(os.Stderr, "load server config: %v\n", err)
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+        defer stop()
+
+        if err := run(ctx, cfg, os.Args[1:]); err != nil </span><span class="cov0" title="0">{
+                fmt.Fprintf(os.Stderr, "clawbot-server: %v\n", err)
+                os.Exit(1)
+        }</span>
+}
+
+func run(ctx context.Context, cfg config.Server, args []string) error <span class="cov0" title="0">{
+        logger := app.NewLogger(cfg.LogLevel, os.Stdout)
+
+        if len(args) == 0 || args[0] == "serve" </span><span class="cov0" title="0">{
+                logger.Info("starting clawbot-server", slog.String("address", cfg.HTTPAddress))
+                return app.RunServer(ctx, cfg, logger)
+        }</span>
+
+        <span class="cov0" title="0">if args[0] != "migrate" </span><span class="cov0" title="0">{
+                return fmt.Errorf("unknown command %q", args[0])
+        }</span>
+
+        <span class="cov0" title="0">if len(args) &lt; 2 </span><span class="cov0" title="0">{
+                return fmt.Errorf("migrate requires a subcommand: up or down")
+        }</span>
+
+        <span class="cov0" title="0">switch args[1] </span>{
+        case "up":<span class="cov0" title="0">
+                return app.MigrateUp(ctx, cfg, logger)</span>
+        case "down":<span class="cov0" title="0">
+                return app.MigrateDown(ctx, cfg, logger)</span>
+        default:<span class="cov0" title="0">
+                return fmt.Errorf("unknown migrate subcommand %q", args[1])</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package main
+
+import (
+        "bufio"
+        "context"
+        "encoding/binary"
+        "errors"
+        "flag"
+        "fmt"
+        "io"
+        "net"
+        "net/http"
+        "os"
+        "strings"
+        "time"
+
+        "clawbot-server/internal/config"
+        "clawbot-server/internal/version"
+)
+
+type smokeCheck struct {
+        name string
+        run  func(context.Context, config.Foundation) error
+}
+
+var dialTimeout = net.DialTimeout
+var httpTransport http.RoundTripper = http.DefaultTransport
+
+func main() <span class="cov0" title="0">{
+        showVersion := flag.Bool("version", false, "print version and exit")
+        flag.Parse()
+
+        if *showVersion </span><span class="cov0" title="0">{
+                fmt.Println(version.Value)
+                return
+        }</span>
+
+        <span class="cov0" title="0">cfg, err := config.LoadFoundationFromEnv()
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Fprintf(os.Stderr, "load config: %v\n", err)
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">ctx := context.Background()
+        checks := []smokeCheck{
+                {name: "postgres", run: checkPostgres},
+                {name: "redis", run: checkRedis},
+                {name: "nats", run: checkNATS},
+                {name: "minio", run: func(ctx context.Context, cfg config.Foundation) error </span><span class="cov0" title="0">{
+                        return checkHTTP(ctx, cfg.MinIOURL, cfg.Timeout)
+                }</span>},
+                {name: "omniroute", run: func(ctx context.Context, cfg config.Foundation) error <span class="cov0" title="0">{
+                        return checkHTTP(ctx, cfg.OmniRouteURL, cfg.Timeout)
+                }</span>},
+                {name: "zeroclaw", run: func(ctx context.Context, cfg config.Foundation) error <span class="cov0" title="0">{
+                        return checkHTTP(ctx, cfg.ZeroClawURL, cfg.Timeout)
+                }</span>},
+                {name: "prometheus", run: func(ctx context.Context, cfg config.Foundation) error <span class="cov0" title="0">{
+                        return checkHTTP(ctx, cfg.PrometheusURL, cfg.Timeout)
+                }</span>},
+                {name: "grafana", run: func(ctx context.Context, cfg config.Foundation) error <span class="cov0" title="0">{
+                        return checkHTTP(ctx, cfg.GrafanaURL, cfg.Timeout)
+                }</span>},
+        }
+
+        <span class="cov0" title="0">failed := false
+        for _, check := range checks </span><span class="cov0" title="0">{
+                if err := check.run(ctx, cfg); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("FAIL %s: %v\n", check.name, err)
+                        failed = true
+                        continue</span>
+                }
+                <span class="cov0" title="0">fmt.Printf("PASS %s\n", check.name)</span>
+        }
+
+        <span class="cov0" title="0">if failed </span><span class="cov0" title="0">{
+                os.Exit(1)
+        }</span>
+}
+
+func checkPostgres(_ context.Context, cfg config.Foundation) error <span class="cov8" title="1">{
+        address := net.JoinHostPort(cfg.PostgresHost, cfg.PostgresPort)
+        conn, err := dialTimeout("tcp", address, cfg.Timeout)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("dial %s: %w", address, err)
+        }</span>
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{ _ = conn.Close() }</span>()
+
+        <span class="cov8" title="1">if err := conn.SetDeadline(time.Now().Add(cfg.Timeout)); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("set deadline: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">packet, err := buildStartupPacket(cfg.PostgresUser, cfg.PostgresDB)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("build startup packet: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if _, err := conn.Write(packet); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("write startup packet: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">header := make([]byte, 5)
+        if _, err := io.ReadFull(conn, header); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("read response header: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">messageType := header[0]
+        messageLength := int(binary.BigEndian.Uint32(header[1:5]))
+        if messageLength &lt; 4 </span><span class="cov0" title="0">{
+                return fmt.Errorf("invalid postgres message length %d", messageLength)
+        }</span>
+
+        <span class="cov8" title="1">body := make([]byte, messageLength-4)
+        if _, err := io.ReadFull(conn, body); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("read response body: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">switch messageType </span>{
+        case 'R':<span class="cov8" title="1">
+                return nil</span>
+        case 'E':<span class="cov0" title="0">
+                message := parsePostgresError(body)
+                if strings.Contains(strings.ToLower(message), "starting up") </span><span class="cov0" title="0">{
+                        return errors.New(message)
+                }</span>
+                <span class="cov0" title="0">return fmt.Errorf("postgres returned error: %s", message)</span>
+        default:<span class="cov0" title="0">
+                return fmt.Errorf("unexpected postgres response type %q", string(messageType))</span>
+        }
+}
+
+func checkRedis(_ context.Context, cfg config.Foundation) error <span class="cov8" title="1">{
+        address := net.JoinHostPort(cfg.RedisHost, cfg.RedisPort)
+        conn, err := dialTimeout("tcp", address, cfg.Timeout)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("dial %s: %w", address, err)
+        }</span>
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{
+                _ = conn.Close()
+        }</span>()
+
+        <span class="cov8" title="1">_ = conn.SetDeadline(time.Now().Add(cfg.Timeout))
+
+        if _, err := conn.Write([]byte("*1\r\n$4\r\nPING\r\n")); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("write ping: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">reply := make([]byte, 7)
+        if _, err := io.ReadFull(conn, reply); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("read ping reply: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if string(reply) != "+PONG\r\n" </span><span class="cov0" title="0">{
+                return fmt.Errorf("unexpected redis reply %q", string(reply))
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func checkNATS(_ context.Context, cfg config.Foundation) error <span class="cov8" title="1">{
+        address := net.JoinHostPort(cfg.NATSHost, cfg.NATSPort)
+        conn, err := dialTimeout("tcp", address, cfg.Timeout)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("dial %s: %w", address, err)
+        }</span>
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{
+                _ = conn.Close()
+        }</span>()
+
+        <span class="cov8" title="1">_ = conn.SetDeadline(time.Now().Add(cfg.Timeout))
+
+        reader := bufio.NewReader(conn)
+
+        line, err := reader.ReadString('\n')
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("read info line: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if !strings.HasPrefix(line, "INFO ") </span><span class="cov0" title="0">{
+                return fmt.Errorf("unexpected nats banner %q", strings.TrimSpace(line))
+        }</span>
+
+        <span class="cov8" title="1">if _, err := conn.Write([]byte("PING\r\n")); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("write ping: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">for </span><span class="cov8" title="1">{
+                reply, err := reader.ReadString('\n')
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("read ping reply: %w", err)
+                }</span>
+                <span class="cov8" title="1">if strings.TrimSpace(reply) == "PONG" </span><span class="cov8" title="1">{
+                        return nil
+                }</span>
+        }
+}
+
+func checkHTTP(ctx context.Context, url string, timeout time.Duration) error <span class="cov8" title="1">{
+        client := &amp;http.Client{
+                Timeout:   timeout,
+                Transport: httpTransport,
+        }
+
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("build request: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">res, err := client.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("get %s: %w", url, err)
+        }</span>
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{ _ = res.Body.Close() }</span>()
+
+        <span class="cov8" title="1">if res.StatusCode &lt; http.StatusOK || res.StatusCode &gt;= http.StatusBadRequest </span><span class="cov0" title="0">{
+                return fmt.Errorf("get %s: unexpected status %d", url, res.StatusCode)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func buildStartupPacket(user string, database string) ([]byte, error) <span class="cov8" title="1">{
+        payload := []byte("user\x00" + user + "\x00database\x00" + database + "\x00client_encoding\x00UTF8\x00\x00")
+
+        packetLen := 8 + len(payload)
+        if uint64(packetLen) &gt; uint64(^uint32(0)) </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("startup packet too large: %d", packetLen)
+        }</span>
+
+        <span class="cov8" title="1">packet := make([]byte, packetLen)
+        binary.BigEndian.PutUint32(packet[0:4], uint32(packetLen))
+        binary.BigEndian.PutUint32(packet[4:8], 196608)
+        copy(packet[8:], payload)
+        return packet, nil</span>
+}
+
+func parsePostgresError(body []byte) string <span class="cov0" title="0">{
+        parts := strings.Split(string(body), "\x00")
+        messages := make([]string, 0, len(parts))
+        for _, part := range parts </span><span class="cov0" title="0">{
+                if len(part) &lt; 2 </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">kind := part[0]
+                value := part[1:]
+                if kind == 'M' || kind == 'D' </span><span class="cov0" title="0">{
+                        messages = append(messages, value)
+                }</span>
+        }
+        <span class="cov0" title="0">if len(messages) == 0 </span><span class="cov0" title="0">{
+                return "unknown postgres error"
+        }</span>
+        <span class="cov0" title="0">return strings.Join(messages, ": ")</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package app
+
+import (
+        "context"
+        "fmt"
+        "io"
+        "log/slog"
+        "net/http"
+        "time"
+
+        "clawbot-server/internal/config"
+        "clawbot-server/internal/db"
+        "clawbot-server/internal/http/routes"
+        "clawbot-server/internal/platform/audit"
+        "clawbot-server/internal/platform/bots"
+        "clawbot-server/internal/platform/ops"
+        "clawbot-server/internal/platform/policies"
+        "clawbot-server/internal/platform/runs"
+        "clawbot-server/internal/platform/scheduler"
+        "clawbot-server/internal/platform/store"
+        "clawbot-server/internal/version"
+
+        "github.com/jackc/pgx/v5/pgxpool"
+)
+
+func NewLogger(level string, writer io.Writer) *slog.Logger <span class="cov8" title="1">{
+        var slogLevel slog.Level
+        switch level </span>{
+        case "debug":<span class="cov8" title="1">
+                slogLevel = slog.LevelDebug</span>
+        case "warn":<span class="cov0" title="0">
+                slogLevel = slog.LevelWarn</span>
+        case "error":<span class="cov0" title="0">
+                slogLevel = slog.LevelError</span>
+        default:<span class="cov0" title="0">
+                slogLevel = slog.LevelInfo</span>
+        }
+
+        <span class="cov8" title="1">return slog.New(slog.NewJSONHandler(writer, &amp;slog.HandlerOptions{Level: slogLevel}))</span>
+}
+
+func RunServer(ctx context.Context, cfg config.Server, logger *slog.Logger) error <span class="cov0" title="0">{
+        pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("create postgres pool: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer pool.Close()
+
+        if cfg.AutoMigrate </span><span class="cov0" title="0">{
+                if err := db.ApplyAll(ctx, pool); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("apply migrations: %w", err)
+                }</span>
+        }
+
+        <span class="cov0" title="0">pg := store.NewPostgres(pool)
+        buildInfo := version.Current()
+        services := buildServices(pg, buildInfo)
+        router := routes.New(logger, routes.Services{
+                System:    routes.NewSystemHandler(pg.Ping),
+                Runs:      services.runs,
+                Bots:      services.bots,
+                Policies:  services.policies,
+                Dashboard: services.dashboard,
+                Ops:       services.ops,
+        })
+
+        server := &amp;http.Server{
+                Addr:              cfg.HTTPAddress,
+                Handler:           router,
+                ReadHeaderTimeout: 5 * time.Second,
+        }
+
+        errCh := make(chan error, 1)
+        go func() </span><span class="cov0" title="0">{
+                errCh &lt;- server.ListenAndServe()
+        }</span>()
+
+        <span class="cov0" title="0">select </span>{
+        case &lt;-ctx.Done():<span class="cov0" title="0">
+                shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+                defer cancel()
+                return server.Shutdown(shutdownCtx)</span>
+        case err := &lt;-errCh:<span class="cov0" title="0">
+                if err == http.ErrServerClosed </span><span class="cov0" title="0">{
+                        return nil
+                }</span>
+                <span class="cov0" title="0">return fmt.Errorf("listen and serve: %w", err)</span>
+        }
+}
+
+func MigrateUp(ctx context.Context, cfg config.Server, _ *slog.Logger) error <span class="cov0" title="0">{
+        pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("create postgres pool: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer pool.Close()
+
+        return db.ApplyAll(ctx, pool)</span>
+}
+
+func MigrateDown(ctx context.Context, cfg config.Server, _ *slog.Logger) error <span class="cov0" title="0">{
+        pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("create postgres pool: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer pool.Close()
+
+        return db.DownOne(ctx, pool)</span>
+}
+
+type appServices struct {
+        runs      runs.Service
+        bots      bots.Service
+        policies  policies.Service
+        dashboard *store.DashboardReader
+        ops       *ops.Manager
+}
+
+func buildServices(pg *store.Postgres, buildInfo version.Info) appServices <span class="cov8" title="1">{
+        auditRepo := audit.NewPostgresRepository()
+        audits := audit.NewService(auditRepo)
+        schedulerService := scheduler.NewPlaceholderService(audits)
+
+        runsRepo := runs.NewPostgresRepository()
+        botsRepo := bots.NewPostgresRepository()
+        policiesRepo := policies.NewPostgresRepository()
+
+        return appServices{
+                runs:      runs.NewManager(pg.Pool(), pg, runsRepo, audits, schedulerService),
+                bots:      bots.NewManager(pg.Pool(), pg, botsRepo, audits),
+                policies:  policies.NewManager(pg.Pool(), pg, policiesRepo, audits),
+                dashboard: store.NewDashboardReader(pg.Pool()),
+                ops:       ops.NewManager(buildInfo),
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package config
+
+import (
+        "fmt"
+        "os"
+        "time"
+)
+
+type Foundation struct {
+        PostgresHost string
+        PostgresPort string
+        PostgresDB   string
+        PostgresUser string
+
+        RedisHost string
+        RedisPort string
+
+        NATSHost string
+        NATSPort string
+
+        MinIOURL      string
+        OmniRouteURL  string
+        ZeroClawURL   string
+        PrometheusURL string
+        GrafanaURL    string
+
+        Timeout time.Duration
+}
+
+func LoadFoundationFromEnv() (Foundation, error) <span class="cov8" title="1">{
+        timeout := getEnv("STACK_SMOKE_TIMEOUT", "5s")
+        parsedTimeout, err := time.ParseDuration(timeout)
+        if err != nil </span><span class="cov8" title="1">{
+                return Foundation{}, fmt.Errorf("parse STACK_SMOKE_TIMEOUT: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">cfg := Foundation{
+                PostgresHost: getEnv("POSTGRES_HOST", "127.0.0.1"),
+                PostgresPort: getEnv("POSTGRES_PORT", "5432"),
+                PostgresDB:   getEnv("POSTGRES_DB", "clawbot"),
+                PostgresUser: getEnv("POSTGRES_USER", "clawbot"),
+                RedisHost:    getEnv("REDIS_HOST", "127.0.0.1"),
+                RedisPort:    getEnv("REDIS_PORT", "6379"),
+                NATSHost:     getEnv("NATS_HOST", "127.0.0.1"),
+                NATSPort:     getEnv("NATS_PORT", "4222"),
+                MinIOURL:     getEnv("STACK_SMOKE_MINIO_URL", fmt.Sprintf("http://%s:%s/minio/health/ready", getEnv("MINIO_HOST", "127.0.0.1"), getEnv("MINIO_PORT", "9000"))),
+                OmniRouteURL: getEnv("STACK_SMOKE_OMNIROUTE_URL", fmt.Sprintf("http://%s:%s/", getEnv("OMNIROUTE_HOST", "127.0.0.1"), getEnv("OMNIROUTE_PORT", "20128"))),
+                ZeroClawURL:  getEnv("STACK_SMOKE_ZEROCLAW_URL", fmt.Sprintf("http://%s:%s/health", getEnv("ZEROCLAW_HOST", "127.0.0.1"), getEnv("ZEROCLAW_PORT", "3000"))),
+                PrometheusURL: getEnv(
+                        "STACK_SMOKE_PROMETHEUS_URL",
+                        fmt.Sprintf("http://%s:%s/-/ready", getEnv("PROMETHEUS_HOST", "127.0.0.1"), getEnv("PROMETHEUS_PORT", "9090")),
+                ),
+                GrafanaURL: getEnv(
+                        "STACK_SMOKE_GRAFANA_URL",
+                        fmt.Sprintf("http://%s:%s/api/health", getEnv("GRAFANA_HOST", "127.0.0.1"), getEnv("GRAFANA_PORT", "3001")),
+                ),
+                Timeout: parsedTimeout,
+        }
+
+        return cfg, nil</span>
+}
+
+func getEnv(key string, fallback string) string <span class="cov8" title="1">{
+        if value, ok := os.LookupEnv(key); ok &amp;&amp; value != "" </span><span class="cov8" title="1">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return fallback</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package config
+
+import (
+        "fmt"
+        "os"
+        "strings"
+        "time"
+)
+
+type Server struct {
+        AppEnv          string
+        HTTPAddress     string
+        DatabaseURL     string
+        LogLevel        string
+        AutoMigrate     bool
+        ShutdownTimeout time.Duration
+}
+
+func LoadServerFromEnv() (Server, error) <span class="cov8" title="1">{
+        cfg := Server{
+                AppEnv:      envOrDefault("APP_ENV", "development"),
+                HTTPAddress: envOrDefault("SERVER_ADDRESS", "127.0.0.1:8080"),
+                DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")),
+                LogLevel:    envOrDefault("LOG_LEVEL", "info"),
+                AutoMigrate: parseBool(envOrDefault("AUTO_MIGRATE", "true")),
+        }
+
+        shutdownTimeout, err := time.ParseDuration(envOrDefault("SHUTDOWN_TIMEOUT", "10s"))
+        if err != nil </span><span class="cov8" title="1">{
+                return Server{}, fmt.Errorf("parse SHUTDOWN_TIMEOUT: %w", err)
+        }</span>
+        <span class="cov8" title="1">cfg.ShutdownTimeout = shutdownTimeout
+
+        if cfg.DatabaseURL == "" </span><span class="cov8" title="1">{
+                return Server{}, fmt.Errorf("DATABASE_URL is required")
+        }</span>
+
+        <span class="cov8" title="1">if cfg.HTTPAddress == "" </span><span class="cov0" title="0">{
+                return Server{}, fmt.Errorf("SERVER_ADDRESS is required")
+        }</span>
+
+        <span class="cov8" title="1">return cfg, nil</span>
+}
+
+func envOrDefault(key string, fallback string) string <span class="cov8" title="1">{
+        if value, ok := os.LookupEnv(key); ok &amp;&amp; strings.TrimSpace(value) != "" </span><span class="cov8" title="1">{
+                return strings.TrimSpace(value)
+        }</span>
+        <span class="cov8" title="1">return fallback</span>
+}
+
+func parseBool(value string) bool <span class="cov8" title="1">{
+        switch strings.ToLower(strings.TrimSpace(value)) </span>{
+        case "1", "true", "yes", "on":<span class="cov8" title="1">
+                return true</span>
+        default:<span class="cov0" title="0">
+                return false</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package db
+
+import (
+        "context"
+        "embed"
+        "fmt"
+        "io/fs"
+        "sort"
+        "strconv"
+        "strings"
+
+        "github.com/jackc/pgx/v5/pgxpool"
+)
+
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
+type migration struct {
+        version  int
+        upFile   string
+        downFile string
+}
+
+func ApplyAll(ctx context.Context, pool *pgxpool.Pool) error <span class="cov0" title="0">{
+        migrations, err := loadMigrations()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if err := ensureSchemaMigrations(ctx, pool); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">applied, err := appliedVersions(ctx, pool)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">for _, migration := range migrations </span><span class="cov0" title="0">{
+                if applied[migration.version] </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">body, err := migrationFiles.ReadFile(migration.upFile)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("read migration %s: %w", migration.upFile, err)
+                }</span>
+
+                <span class="cov0" title="0">tx, err := pool.Begin(ctx)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("begin migration transaction: %w", err)
+                }</span>
+
+                <span class="cov0" title="0">if _, err := tx.Exec(ctx, string(body)); err != nil </span><span class="cov0" title="0">{
+                        _ = tx.Rollback(ctx)
+                        return fmt.Errorf("apply migration %s: %w", migration.upFile, err)
+                }</span>
+                <span class="cov0" title="0">if _, err := tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", migration.version); err != nil </span><span class="cov0" title="0">{
+                        _ = tx.Rollback(ctx)
+                        return fmt.Errorf("record migration %d: %w", migration.version, err)
+                }</span>
+                <span class="cov0" title="0">if err := tx.Commit(ctx); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("commit migration %d: %w", migration.version, err)
+                }</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func DownOne(ctx context.Context, pool *pgxpool.Pool) error <span class="cov0" title="0">{
+        migrations, err := loadMigrations()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if err := ensureSchemaMigrations(ctx, pool); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">var version int
+        if err := pool.QueryRow(ctx, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&amp;version); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("load latest migration version: %w", err)
+        }</span>
+        <span class="cov0" title="0">if version == 0 </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">var target migration
+        found := false
+        for _, migration := range migrations </span><span class="cov0" title="0">{
+                if migration.version == version </span><span class="cov0" title="0">{
+                        target = migration
+                        found = true
+                        break</span>
+                }
+        }
+        <span class="cov0" title="0">if !found </span><span class="cov0" title="0">{
+                return fmt.Errorf("no down migration found for version %d", version)
+        }</span>
+
+        <span class="cov0" title="0">body, err := migrationFiles.ReadFile(target.downFile)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("read down migration %s: %w", target.downFile, err)
+        }</span>
+
+        <span class="cov0" title="0">tx, err := pool.Begin(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("begin rollback transaction: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">if _, err := tx.Exec(ctx, string(body)); err != nil </span><span class="cov0" title="0">{
+                _ = tx.Rollback(ctx)
+                return fmt.Errorf("apply down migration %s: %w", target.downFile, err)
+        }</span>
+        <span class="cov0" title="0">if _, err := tx.Exec(ctx, "DELETE FROM schema_migrations WHERE version = $1", version); err != nil </span><span class="cov0" title="0">{
+                _ = tx.Rollback(ctx)
+                return fmt.Errorf("delete migration record %d: %w", version, err)
+        }</span>
+        <span class="cov0" title="0">if err := tx.Commit(ctx); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("commit down migration %d: %w", version, err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func ensureSchemaMigrations(ctx context.Context, pool *pgxpool.Pool) error <span class="cov0" title="0">{
+        const query = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version BIGINT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+`
+
+        if _, err := pool.Exec(ctx, query); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("ensure schema_migrations table: %w", err)
+        }</span>
+        <span class="cov0" title="0">return nil</span>
+}
+
+func appliedVersions(ctx context.Context, pool *pgxpool.Pool) (map[int]bool, error) <span class="cov0" title="0">{
+        rows, err := pool.Query(ctx, "SELECT version FROM schema_migrations")
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("query applied migrations: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        applied := make(map[int]bool)
+        for rows.Next() </span><span class="cov0" title="0">{
+                var version int
+                if err := rows.Scan(&amp;version); err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("scan migration version: %w", err)
+                }</span>
+                <span class="cov0" title="0">applied[version] = true</span>
+        }
+
+        <span class="cov0" title="0">return applied, rows.Err()</span>
+}
+
+func loadMigrations() ([]migration, error) <span class="cov8" title="1">{
+        entries, err := fs.Glob(migrationFiles, "migrations/*.sql")
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("glob migration files: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">byVersion := make(map[int]*migration)
+        for _, entry := range entries </span><span class="cov8" title="1">{
+                base := strings.TrimPrefix(entry, "migrations/")
+                parts := strings.Split(base, "_")
+                if len(parts) &lt; 2 </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("invalid migration name %q", base)
+                }</span>
+
+                <span class="cov8" title="1">version, err := strconv.Atoi(parts[0])
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("parse migration version from %q: %w", base, err)
+                }</span>
+
+                <span class="cov8" title="1">item := byVersion[version]
+                if item == nil </span><span class="cov8" title="1">{
+                        item = &amp;migration{version: version}
+                        byVersion[version] = item
+                }</span>
+
+                <span class="cov8" title="1">switch </span>{
+                case strings.HasSuffix(base, ".up.sql"):<span class="cov8" title="1">
+                        item.upFile = entry</span>
+                case strings.HasSuffix(base, ".down.sql"):<span class="cov8" title="1">
+                        item.downFile = entry</span>
+                default:<span class="cov0" title="0">
+                        return nil, fmt.Errorf("invalid migration suffix for %q", base)</span>
+                }
+        }
+
+        <span class="cov8" title="1">result := make([]migration, 0, len(byVersion))
+        for _, item := range byVersion </span><span class="cov8" title="1">{
+                if item.upFile == "" || item.downFile == "" </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("migration %d is missing up or down file", item.version)
+                }</span>
+                <span class="cov8" title="1">result = append(result, *item)</span>
+        }
+
+        <span class="cov8" title="1">sort.Slice(result, func(i, j int) bool </span><span class="cov0" title="0">{
+                return result[i].version &lt; result[j].version
+        }</span>)
+
+        <span class="cov8" title="1">return result, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package handlers
+
+import (
+        "net/http"
+
+        "clawbot-server/internal/platform/bots"
+
+        "github.com/go-chi/chi/v5"
+)
+
+type BotsHandler struct {
+        service bots.Service
+}
+
+func NewBotsHandler(service bots.Service) *BotsHandler <span class="cov8" title="1">{
+        return &amp;BotsHandler{service: service}
+}</span>
+
+func (h *BotsHandler) List(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        items, err := h.service.List(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": items})</span>
+}
+
+func (h *BotsHandler) Create(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        var input bots.CreateInput
+        if err := decodeJSON(r, &amp;input); err != nil </span><span class="cov0" title="0">{
+                writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+                return
+        }</span>
+
+        <span class="cov8" title="1">item, err := h.service.Create(r.Context(), input, actorFromRequest(r))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusCreated, envelope{"data": item})</span>
+}
+
+func (h *BotsHandler) Get(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        item, err := h.service.Get(r.Context(), chi.URLParam(r, "botID"))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": item})</span>
+}
+
+func (h *BotsHandler) Update(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        var input bots.UpdateInput
+        if err := decodeJSON(r, &amp;input); err != nil </span><span class="cov0" title="0">{
+                writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+                return
+        }</span>
+
+        <span class="cov0" title="0">item, err := h.service.Update(r.Context(), chi.URLParam(r, "botID"), input, actorFromRequest(r))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": item})</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package handlers
+
+import (
+        "encoding/json"
+        "errors"
+        "net/http"
+        "strings"
+
+        "clawbot-server/internal/platform/store"
+)
+
+type envelope map[string]any
+
+func writeJSON(w http.ResponseWriter, status int, payload any) <span class="cov8" title="1">{
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(status)
+        _ = json.NewEncoder(w).Encode(payload)
+}</span>
+
+func writeError(w http.ResponseWriter, status int, code string, message string) <span class="cov8" title="1">{
+        writeJSON(w, status, envelope{
+                "error": envelope{
+                        "code":    code,
+                        "message": message,
+                },
+        })
+}</span>
+
+func decodeJSON(r *http.Request, out any) error <span class="cov8" title="1">{
+        decoder := json.NewDecoder(r.Body)
+        decoder.DisallowUnknownFields()
+        return decoder.Decode(out)
+}</span>
+
+func actorFromRequest(r *http.Request) string <span class="cov8" title="1">{
+        actor := strings.TrimSpace(r.Header.Get("X-Actor"))
+        if actor == "" </span><span class="cov8" title="1">{
+                return "control-plane"
+        }</span>
+        <span class="cov8" title="1">return actor</span>
+}
+
+func writeServiceError(w http.ResponseWriter, err error) <span class="cov8" title="1">{
+        switch </span>{
+        case errors.Is(err, store.ErrNotFound):<span class="cov8" title="1">
+                writeError(w, http.StatusNotFound, "not_found", err.Error())</span>
+        default:<span class="cov8" title="1">
+                writeError(w, http.StatusBadRequest, "bad_request", err.Error())</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package handlers
+
+import (
+        "context"
+        "net/http"
+
+        "clawbot-server/internal/platform/store"
+)
+
+type DashboardService interface {
+        Summary(context.Context) (store.DashboardSummary, error)
+}
+
+type DashboardHandler struct {
+        service DashboardService
+}
+
+func NewDashboardHandler(service DashboardService) *DashboardHandler <span class="cov0" title="0">{
+        return &amp;DashboardHandler{service: service}
+}</span>
+
+func (h *DashboardHandler) Summary(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        summary, err := h.service.Summary(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": summary})</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package handlers
+
+import (
+        "context"
+        "embed"
+        "fmt"
+        "html/template"
+        "net/http"
+        "sort"
+        "strings"
+        "time"
+
+        "clawbot-server/internal/platform/ops"
+
+        "github.com/go-chi/chi/v5"
+)
+
+//go:embed templates/ops/*.gohtml
+var opsTemplateFS embed.FS
+
+type OpsService interface {
+        Overview(context.Context) (ops.Overview, error)
+        ListServices(context.Context) ([]ops.ServiceStatus, error)
+        GetService(context.Context, string) (ops.ServiceStatus, error)
+        SetMaintenance(context.Context, string, string) (ops.ServiceStatus, error)
+        ResumeService(context.Context, string, string) (ops.ServiceStatus, error)
+        ListSchedulers(context.Context) ([]ops.SchedulerStatus, error)
+        GetScheduler(context.Context, string) (ops.SchedulerStatus, error)
+        PauseScheduler(context.Context, string, string) (ops.SchedulerStatus, error)
+        ResumeScheduler(context.Context, string, string) (ops.SchedulerStatus, error)
+        RunSchedulerOnce(context.Context, string, string) (ops.SchedulerStatus, error)
+        ListEvents(context.Context) ([]ops.ActivityEvent, error)
+}
+
+type OpsHandler struct {
+        service   OpsService
+        templates *template.Template
+}
+
+type opsPageData struct {
+        Title           string
+        CurrentPath     string
+        Overview        ops.Overview
+        Services        []ops.ServiceStatus
+        Service         ops.ServiceStatus
+        Schedulers      []ops.SchedulerStatus
+        Scheduler       ops.SchedulerStatus
+        Events          []ops.ActivityEvent
+        ContentTemplate string
+}
+
+type dependencyEntry struct {
+        Name   string
+        Status string
+}
+
+func NewOpsHandler(service OpsService) *OpsHandler <span class="cov8" title="1">{
+        funcs := template.FuncMap{
+                "formatTime":      formatOpsTime,
+                "formatMaybeTime": formatOptionalOpsTime,
+                "formatUptime":    formatUptime,
+                "statusClass":     statusClass,
+                "dependencyPairs": dependencyPairs,
+        }
+
+        templates := template.Must(template.New("ops").Funcs(funcs).ParseFS(
+                opsTemplateFS,
+                "templates/ops/base.gohtml",
+                "templates/ops/overview.gohtml",
+                "templates/ops/services.gohtml",
+                "templates/ops/service_detail.gohtml",
+                "templates/ops/schedulers.gohtml",
+                "templates/ops/events.gohtml",
+        ))
+
+        return &amp;OpsHandler{service: service, templates: templates}
+}</span>
+
+func (h *OpsHandler) Overview(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        overview, err := h.service.Overview(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": overview})</span>
+}
+
+func (h *OpsHandler) ListServices(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        services, err := h.service.ListServices(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": services})</span>
+}
+
+func (h *OpsHandler) GetService(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        service, err := h.service.GetService(r.Context(), chi.URLParam(r, "serviceID"))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": service})</span>
+}
+
+func (h *OpsHandler) SetMaintenance(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        service, err := h.service.SetMaintenance(r.Context(), chi.URLParam(r, "serviceID"), actorFromRequest(r))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": service})</span>
+}
+
+func (h *OpsHandler) ResumeService(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        service, err := h.service.ResumeService(r.Context(), chi.URLParam(r, "serviceID"), actorFromRequest(r))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": service})</span>
+}
+
+func (h *OpsHandler) ListSchedulers(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        schedulers, err := h.service.ListSchedulers(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": schedulers})</span>
+}
+
+func (h *OpsHandler) GetScheduler(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        scheduler, err := h.service.GetScheduler(r.Context(), chi.URLParam(r, "schedulerID"))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": scheduler})</span>
+}
+
+func (h *OpsHandler) PauseScheduler(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        scheduler, err := h.service.PauseScheduler(r.Context(), chi.URLParam(r, "schedulerID"), actorFromRequest(r))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": scheduler})</span>
+}
+
+func (h *OpsHandler) ResumeScheduler(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        scheduler, err := h.service.ResumeScheduler(r.Context(), chi.URLParam(r, "schedulerID"), actorFromRequest(r))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": scheduler})</span>
+}
+
+func (h *OpsHandler) RunSchedulerOnce(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        scheduler, err := h.service.RunSchedulerOnce(r.Context(), chi.URLParam(r, "schedulerID"), actorFromRequest(r))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": scheduler})</span>
+}
+
+func (h *OpsHandler) ListEvents(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        events, err := h.service.ListEvents(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": events})</span>
+}
+
+func (h *OpsHandler) OverviewPage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        overview, err := h.service.Overview(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">services, err := h.service.ListServices(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">events, err := h.service.ListEvents(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+
+        <span class="cov8" title="1">if len(events) &gt; 6 </span><span class="cov8" title="1">{
+                events = events[:6]
+        }</span>
+
+        <span class="cov8" title="1">data := opsPageData{
+                Title:       "Overview",
+                CurrentPath: "/ops",
+                Overview:    overview,
+                Services:    services,
+                Events:      events,
+        }
+        h.renderPage(w, "overview-content", data)</span>
+}
+
+func (h *OpsHandler) ServicesPage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        overview, err := h.service.Overview(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">services, err := h.service.ListServices(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+
+        <span class="cov8" title="1">data := opsPageData{
+                Title:       "Services",
+                CurrentPath: "/ops/services",
+                Overview:    overview,
+                Services:    services,
+        }
+        h.renderPage(w, "services-content", data)</span>
+}
+
+func (h *OpsHandler) ServiceDetailPage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        overview, err := h.service.Overview(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">service, err := h.service.GetService(r.Context(), chi.URLParam(r, "serviceID"))
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+
+        <span class="cov8" title="1">data := opsPageData{
+                Title:       fmt.Sprintf("Service: %s", service.Name),
+                CurrentPath: "/ops/services",
+                Overview:    overview,
+                Service:     service,
+        }
+        h.renderPage(w, "service-detail-content", data)</span>
+}
+
+func (h *OpsHandler) SchedulersPage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        overview, err := h.service.Overview(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">schedulers, err := h.service.ListSchedulers(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+
+        <span class="cov8" title="1">data := opsPageData{
+                Title:       "Schedulers",
+                CurrentPath: "/ops/schedulers",
+                Overview:    overview,
+                Schedulers:  schedulers,
+        }
+        h.renderPage(w, "schedulers-content", data)</span>
+}
+
+func (h *OpsHandler) EventsPage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        overview, err := h.service.Overview(r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">events, err := h.service.ListEvents(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+
+        <span class="cov8" title="1">data := opsPageData{
+                Title:       "Recent activity",
+                CurrentPath: "/ops/events",
+                Overview:    overview,
+                Events:      events,
+        }
+        h.renderPage(w, "events-content", data)</span>
+}
+
+func (h *OpsHandler) SetMaintenancePage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        h.handleServicePageAction(w, r, "/ops/services", func(ctx context.Context, id string, actor string) error </span><span class="cov8" title="1">{
+                _, err := h.service.SetMaintenance(ctx, id, actor)
+                return err
+        }</span>)
+}
+
+func (h *OpsHandler) ResumeServicePage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        h.handleServicePageAction(w, r, "/ops/services", func(ctx context.Context, id string, actor string) error </span><span class="cov8" title="1">{
+                _, err := h.service.ResumeService(ctx, id, actor)
+                return err
+        }</span>)
+}
+
+func (h *OpsHandler) PauseSchedulerPage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        h.handleSchedulerPageAction(w, r, "/ops/schedulers", func(ctx context.Context, id string, actor string) error </span><span class="cov8" title="1">{
+                _, err := h.service.PauseScheduler(ctx, id, actor)
+                return err
+        }</span>)
+}
+
+func (h *OpsHandler) ResumeSchedulerPage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        h.handleSchedulerPageAction(w, r, "/ops/schedulers", func(ctx context.Context, id string, actor string) error </span><span class="cov8" title="1">{
+                _, err := h.service.ResumeScheduler(ctx, id, actor)
+                return err
+        }</span>)
+}
+
+func (h *OpsHandler) RunSchedulerOncePage(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        h.handleSchedulerPageAction(w, r, "/ops/schedulers", func(ctx context.Context, id string, actor string) error </span><span class="cov8" title="1">{
+                _, err := h.service.RunSchedulerOnce(ctx, id, actor)
+                return err
+        }</span>)
+}
+
+func (h *OpsHandler) renderPage(w http.ResponseWriter, contentTemplate string, data opsPageData) <span class="cov8" title="1">{
+        w.Header().Set("Content-Type", "text/html; charset=utf-8")
+        data.ContentTemplate = contentTemplate
+        if err := h.templates.ExecuteTemplate(w, "base", data); err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusInternalServerError, "render_error", err.Error())
+        }</span>
+}
+
+func redirectBack(w http.ResponseWriter, r *http.Request, fallback string) <span class="cov8" title="1">{
+        target := strings.TrimSpace(r.Referer())
+        if target == "" </span><span class="cov8" title="1">{
+                target = fallback
+        }</span>
+        <span class="cov8" title="1">http.Redirect(w, r, target, http.StatusSeeOther)</span>
+}
+
+func (h *OpsHandler) handleServicePageAction(w http.ResponseWriter, r *http.Request, fallback string, action func(context.Context, string, string) error) <span class="cov8" title="1">{
+        if err := action(r.Context(), chi.URLParam(r, "serviceID"), actorFromRequest(r)); err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">redirectBack(w, r, fallback)</span>
+}
+
+func (h *OpsHandler) handleSchedulerPageAction(w http.ResponseWriter, r *http.Request, fallback string, action func(context.Context, string, string) error) <span class="cov8" title="1">{
+        if err := action(r.Context(), chi.URLParam(r, "schedulerID"), actorFromRequest(r)); err != nil </span><span class="cov8" title="1">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">redirectBack(w, r, fallback)</span>
+}
+
+func dependencyPairs(values map[string]string) []dependencyEntry <span class="cov8" title="1">{
+        pairs := make([]dependencyEntry, 0, len(values))
+        for name, status := range values </span><span class="cov8" title="1">{
+                pairs = append(pairs, dependencyEntry{Name: name, Status: status})
+        }</span>
+        <span class="cov8" title="1">sort.Slice(pairs, func(i, j int) bool </span><span class="cov8" title="1">{
+                return pairs[i].Name &lt; pairs[j].Name
+        }</span>)
+        <span class="cov8" title="1">return pairs</span>
+}
+
+func formatOpsTime(value time.Time) string <span class="cov8" title="1">{
+        if value.IsZero() </span><span class="cov8" title="1">{
+                return "never"
+        }</span>
+        <span class="cov8" title="1">return value.Local().Format("2006-01-02 15:04:05")</span>
+}
+
+func formatOptionalOpsTime(value *time.Time) string <span class="cov8" title="1">{
+        if value == nil </span><span class="cov8" title="1">{
+                return "not scheduled"
+        }</span>
+        <span class="cov8" title="1">return formatOpsTime(*value)</span>
+}
+
+func formatUptime(seconds int64) string <span class="cov8" title="1">{
+        duration := time.Duration(seconds) * time.Second
+        if duration &lt; time.Minute </span><span class="cov8" title="1">{
+                return duration.String()
+        }</span>
+        <span class="cov8" title="1">if duration &lt; time.Hour </span><span class="cov8" title="1">{
+                return fmt.Sprintf("%dm", int(duration.Minutes()))
+        }</span>
+        <span class="cov8" title="1">hours := int(duration.Hours())
+        minutes := int(duration.Minutes()) % 60
+        return fmt.Sprintf("%dh %dm", hours, minutes)</span>
+}
+
+func statusClass(status string) string <span class="cov8" title="1">{
+        switch status </span>{
+        case ops.StatusHealthy:<span class="cov8" title="1">
+                return "status-healthy"</span>
+        case ops.SeverityInfo:<span class="cov8" title="1">
+                return "status-healthy"</span>
+        case ops.StatusMaintenance:<span class="cov8" title="1">
+                return "status-maintenance"</span>
+        case ops.SeverityWarn:<span class="cov8" title="1">
+                return "status-degraded"</span>
+        case ops.StatusDown:<span class="cov8" title="1">
+                return "status-down"</span>
+        case ops.SeverityError:<span class="cov0" title="0">
+                return "status-down"</span>
+        default:<span class="cov8" title="1">
+                return "status-degraded"</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">package handlers
+
+import (
+        "net/http"
+
+        "clawbot-server/internal/platform/policies"
+
+        "github.com/go-chi/chi/v5"
+)
+
+type PoliciesHandler struct {
+        service policies.Service
+}
+
+func NewPoliciesHandler(service policies.Service) *PoliciesHandler <span class="cov8" title="1">{
+        return &amp;PoliciesHandler{service: service}
+}</span>
+
+func (h *PoliciesHandler) List(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        items, err := h.service.List(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": items})</span>
+}
+
+func (h *PoliciesHandler) Create(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        var input policies.CreateInput
+        if err := decodeJSON(r, &amp;input); err != nil </span><span class="cov0" title="0">{
+                writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+                return
+        }</span>
+
+        <span class="cov8" title="1">item, err := h.service.Create(r.Context(), input, actorFromRequest(r))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusCreated, envelope{"data": item})</span>
+}
+
+func (h *PoliciesHandler) Get(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        item, err := h.service.Get(r.Context(), chi.URLParam(r, "policyID"))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": item})</span>
+}
+
+func (h *PoliciesHandler) Update(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        var input policies.UpdateInput
+        if err := decodeJSON(r, &amp;input); err != nil </span><span class="cov0" title="0">{
+                writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+                return
+        }</span>
+
+        <span class="cov0" title="0">item, err := h.service.Update(r.Context(), chi.URLParam(r, "policyID"), input, actorFromRequest(r))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": item})</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">package handlers
+
+import (
+        "net/http"
+
+        "clawbot-server/internal/platform/runs"
+
+        "github.com/go-chi/chi/v5"
+)
+
+type RunsHandler struct {
+        service runs.Service
+}
+
+func NewRunsHandler(service runs.Service) *RunsHandler <span class="cov8" title="1">{
+        return &amp;RunsHandler{service: service}
+}</span>
+
+func (h *RunsHandler) List(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        items, err := h.service.List(r.Context())
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": items})</span>
+}
+
+func (h *RunsHandler) Create(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        var input runs.CreateInput
+        if err := decodeJSON(r, &amp;input); err != nil </span><span class="cov0" title="0">{
+                writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+                return
+        }</span>
+
+        <span class="cov8" title="1">item, err := h.service.Create(r.Context(), input, actorFromRequest(r))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusCreated, envelope{"data": item})</span>
+}
+
+func (h *RunsHandler) Get(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        item, err := h.service.Get(r.Context(), chi.URLParam(r, "runID"))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov0" title="0">writeJSON(w, http.StatusOK, envelope{"data": item})</span>
+}
+
+func (h *RunsHandler) Update(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        var input runs.UpdateInput
+        if err := decodeJSON(r, &amp;input); err != nil </span><span class="cov0" title="0">{
+                writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+                return
+        }</span>
+
+        <span class="cov8" title="1">item, err := h.service.Update(r.Context(), chi.URLParam(r, "runID"), input, actorFromRequest(r))
+        if err != nil </span><span class="cov0" title="0">{
+                writeServiceError(w, err)
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"data": item})</span>
+}
+</pre>
+		
+		<pre class="file" id="file12" style="display: none">package handlers
+
+import (
+        "context"
+        "net/http"
+
+        "clawbot-server/internal/version"
+)
+
+type SystemHandler struct {
+        readiness func(context.Context) error
+        buildInfo version.Info
+}
+
+func NewSystemHandler(readiness func(context.Context) error, buildInfo version.Info) *SystemHandler <span class="cov8" title="1">{
+        return &amp;SystemHandler{readiness: readiness, buildInfo: buildInfo}
+}</span>
+
+func (h *SystemHandler) Health(w http.ResponseWriter, _ *http.Request) <span class="cov8" title="1">{
+        writeJSON(w, http.StatusOK, envelope{"status": "ok"})
+}</span>
+
+func (h *SystemHandler) Ready(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if err := h.readiness(r.Context()); err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "not_ready", err.Error())
+                return
+        }</span>
+        <span class="cov8" title="1">writeJSON(w, http.StatusOK, envelope{"status": "ready"})</span>
+}
+
+func (h *SystemHandler) Version(w http.ResponseWriter, _ *http.Request) <span class="cov8" title="1">{
+        writeJSON(w, http.StatusOK, h.buildInfo)
+}</span>
+</pre>
+		
+		<pre class="file" id="file13" style="display: none">package middleware
+
+import (
+        "log/slog"
+        "net/http"
+        "time"
+)
+
+type statusRecorder struct {
+        http.ResponseWriter
+        status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) <span class="cov8" title="1">{
+        r.status = status
+        r.ResponseWriter.WriteHeader(status)
+}</span>
+
+func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler <span class="cov8" title="1">{
+        return func(next http.Handler) http.Handler </span><span class="cov8" title="1">{
+                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                        start := time.Now()
+                        recorder := &amp;statusRecorder{ResponseWriter: w, status: http.StatusOK}
+
+                        next.ServeHTTP(recorder, r)
+
+                        logger.Info("request completed",
+                                slog.String("method", r.Method),
+                                slog.String("path", r.URL.Path),
+                                slog.Int("status", recorder.status),
+                                slog.Duration("duration", time.Since(start)),
+                                slog.String("request_id", requestIDFromContext(r.Context())),
+                        )
+                }</span>)
+        }
+}
+</pre>
+		
+		<pre class="file" id="file14" style="display: none">package middleware
+
+import (
+        "context"
+        "net/http"
+
+        chimiddleware "github.com/go-chi/chi/v5/middleware"
+)
+
+type requestIDKey struct{}
+
+func CaptureRequestID(next http.Handler) http.Handler <span class="cov8" title="1">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                requestID := chimiddleware.GetReqID(r.Context())
+                ctx := context.WithValue(r.Context(), requestIDKey{}, requestID)
+                next.ServeHTTP(w, r.WithContext(ctx))
+        }</span>)
+}
+
+func requestIDFromContext(ctx context.Context) string <span class="cov8" title="1">{
+        requestID, _ := ctx.Value(requestIDKey{}).(string)
+        return requestID
+}</span>
+</pre>
+		
+		<pre class="file" id="file15" style="display: none">package routes
+
+import (
+        "context"
+        "log/slog"
+        "net/http"
+        "time"
+
+        "clawbot-server/internal/http/handlers"
+        mw "clawbot-server/internal/http/middleware"
+        "clawbot-server/internal/platform/bots"
+        "clawbot-server/internal/platform/ops"
+        "clawbot-server/internal/platform/policies"
+        "clawbot-server/internal/platform/runs"
+        "clawbot-server/internal/version"
+
+        "github.com/go-chi/chi/v5"
+        chimiddleware "github.com/go-chi/chi/v5/middleware"
+)
+
+type Services struct {
+        System    *handlers.SystemHandler
+        Runs      runs.Service
+        Bots      bots.Service
+        Policies  policies.Service
+        Dashboard handlers.DashboardService
+        Ops       ops.Service
+}
+
+func New(logger *slog.Logger, services Services) http.Handler <span class="cov8" title="1">{
+        router := chi.NewRouter()
+        router.Use(chimiddleware.RequestID)
+        router.Use(mw.CaptureRequestID)
+        router.Use(chimiddleware.RealIP)
+        router.Use(chimiddleware.Recoverer)
+        router.Use(chimiddleware.Timeout(30 * time.Second))
+        router.Use(mw.RequestLogger(logger))
+
+        router.Get("/healthz", services.System.Health)
+        router.Get("/readyz", services.System.Ready)
+        router.Get("/version", services.System.Version)
+
+        opsHandler := handlers.NewOpsHandler(services.Ops)
+
+        router.Get("/", func(w http.ResponseWriter, r *http.Request) </span><span class="cov0" title="0">{
+                http.Redirect(w, r, "/ops", http.StatusSeeOther)
+        }</span>)
+        <span class="cov8" title="1">router.Route("/ops", func(r chi.Router) </span><span class="cov8" title="1">{
+                r.Get("/", opsHandler.OverviewPage)
+                r.Get("/services", opsHandler.ServicesPage)
+                r.Get("/services/{serviceID}", opsHandler.ServiceDetailPage)
+                r.Post("/services/{serviceID}/maintenance", opsHandler.SetMaintenancePage)
+                r.Post("/services/{serviceID}/resume", opsHandler.ResumeServicePage)
+                r.Get("/schedulers", opsHandler.SchedulersPage)
+                r.Post("/schedulers/{schedulerID}/pause", opsHandler.PauseSchedulerPage)
+                r.Post("/schedulers/{schedulerID}/resume", opsHandler.ResumeSchedulerPage)
+                r.Post("/schedulers/{schedulerID}/run-once", opsHandler.RunSchedulerOncePage)
+                r.Get("/events", opsHandler.EventsPage)
+        }</span>)
+
+        <span class="cov8" title="1">router.Route("/api/v1", func(r chi.Router) </span><span class="cov8" title="1">{
+                runsHandler := handlers.NewRunsHandler(services.Runs)
+                botsHandler := handlers.NewBotsHandler(services.Bots)
+                policiesHandler := handlers.NewPoliciesHandler(services.Policies)
+                dashboardHandler := handlers.NewDashboardHandler(services.Dashboard)
+
+                r.Get("/dashboard/summary", dashboardHandler.Summary)
+                r.Route("/ops", func(r chi.Router) </span><span class="cov8" title="1">{
+                        r.Get("/overview", opsHandler.Overview)
+                        r.Get("/services", opsHandler.ListServices)
+                        r.Get("/services/{serviceID}", opsHandler.GetService)
+                        r.Post("/services/{serviceID}/maintenance", opsHandler.SetMaintenance)
+                        r.Post("/services/{serviceID}/resume", opsHandler.ResumeService)
+                        r.Get("/schedulers", opsHandler.ListSchedulers)
+                        r.Get("/schedulers/{schedulerID}", opsHandler.GetScheduler)
+                        r.Post("/schedulers/{schedulerID}/pause", opsHandler.PauseScheduler)
+                        r.Post("/schedulers/{schedulerID}/resume", opsHandler.ResumeScheduler)
+                        r.Post("/schedulers/{schedulerID}/run-once", opsHandler.RunSchedulerOnce)
+                        r.Get("/events", opsHandler.ListEvents)
+                }</span>)
+
+                <span class="cov8" title="1">r.Route("/runs", func(r chi.Router) </span><span class="cov8" title="1">{
+                        r.Get("/", runsHandler.List)
+                        r.Post("/", runsHandler.Create)
+                        r.Get("/{runID}", runsHandler.Get)
+                        r.Patch("/{runID}", runsHandler.Update)
+                }</span>)
+
+                <span class="cov8" title="1">r.Route("/bots", func(r chi.Router) </span><span class="cov8" title="1">{
+                        r.Get("/", botsHandler.List)
+                        r.Post("/", botsHandler.Create)
+                        r.Get("/{botID}", botsHandler.Get)
+                        r.Patch("/{botID}", botsHandler.Update)
+                }</span>)
+
+                <span class="cov8" title="1">r.Route("/policies", func(r chi.Router) </span><span class="cov8" title="1">{
+                        r.Get("/", policiesHandler.List)
+                        r.Post("/", policiesHandler.Create)
+                        r.Get("/{policyID}", policiesHandler.Get)
+                        r.Patch("/{policyID}", policiesHandler.Update)
+                }</span>)
+        })
+
+        <span class="cov8" title="1">return router</span>
+}
+
+type readinessFunc func(context.Context) error
+
+func NewSystemHandler(readiness readinessFunc) *handlers.SystemHandler <span class="cov8" title="1">{
+        return handlers.NewSystemHandler(readiness, version.Current())
+}</span>
+</pre>
+		
+		<pre class="file" id="file16" style="display: none">package audit
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+
+        "clawbot-server/internal/platform/store"
+)
+
+type Service struct {
+        repo Repository
+}
+
+func NewService(repo Repository) *Service <span class="cov8" title="1">{
+        return &amp;Service{repo: repo}
+}</span>
+
+func (s *Service) Record(ctx context.Context, q store.DBTX, event Event) error <span class="cov8" title="1">{
+        if len(event.Payload) == 0 </span><span class="cov8" title="1">{
+                event.Payload = json.RawMessage(`{}`)
+        }</span>
+
+        <span class="cov8" title="1">if err := s.repo.Create(ctx, q, event); err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("create audit event: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+type PostgresRepository struct{}
+
+func NewPostgresRepository() *PostgresRepository <span class="cov0" title="0">{
+        return &amp;PostgresRepository{}
+}</span>
+
+func (r *PostgresRepository) Create(ctx context.Context, q store.DBTX, event Event) error <span class="cov0" title="0">{
+        const query = `
+INSERT INTO audit_events (
+  event_type,
+  entity_type,
+  entity_id,
+  actor,
+  payload_json
+)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+        _, err := q.Exec(ctx, query,
+                event.EventType,
+                event.EntityType,
+                event.EntityID,
+                event.Actor,
+                event.Payload,
+        )
+
+        return err
+}</span>
+</pre>
+		
+		<pre class="file" id="file17" style="display: none">package bots
+
+import (
+        "context"
+        "errors"
+
+        "clawbot-server/internal/platform/store"
+
+        "github.com/jackc/pgx/v5"
+)
+
+type PostgresRepository struct{}
+
+func NewPostgresRepository() *PostgresRepository <span class="cov0" title="0">{
+        return &amp;PostgresRepository{}
+}</span>
+
+func (r *PostgresRepository) List(ctx context.Context, q store.DBTX) ([]Bot, error) <span class="cov0" title="0">{
+        const query = `
+SELECT id, name, role, runtime, status, repo_hint, version, config_json, created_at, updated_at
+FROM bots
+ORDER BY created_at DESC
+`
+
+        rows, err := q.Query(ctx, query)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var items []Bot
+        for rows.Next() </span><span class="cov0" title="0">{
+                var item Bot
+                if err := rows.Scan(
+                        &amp;item.ID,
+                        &amp;item.Name,
+                        &amp;item.Role,
+                        &amp;item.Runtime,
+                        &amp;item.Status,
+                        &amp;item.RepoHint,
+                        &amp;item.Version,
+                        &amp;item.ConfigJSON,
+                        &amp;item.CreatedAt,
+                        &amp;item.UpdatedAt,
+                ); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">items = append(items, item)</span>
+        }
+
+        <span class="cov0" title="0">return items, rows.Err()</span>
+}
+
+func (r *PostgresRepository) Get(ctx context.Context, q store.DBTX, id string) (Bot, error) <span class="cov0" title="0">{
+        const query = `
+SELECT id, name, role, runtime, status, repo_hint, version, config_json, created_at, updated_at
+FROM bots
+WHERE id = $1
+`
+
+        var item Bot
+        err := q.QueryRow(ctx, query, id).Scan(
+                &amp;item.ID,
+                &amp;item.Name,
+                &amp;item.Role,
+                &amp;item.Runtime,
+                &amp;item.Status,
+                &amp;item.RepoHint,
+                &amp;item.Version,
+                &amp;item.ConfigJSON,
+                &amp;item.CreatedAt,
+                &amp;item.UpdatedAt,
+        )
+        if errors.Is(err, pgx.ErrNoRows) </span><span class="cov0" title="0">{
+                return Bot{}, store.ErrNotFound
+        }</span>
+        <span class="cov0" title="0">return item, err</span>
+}
+
+func (r *PostgresRepository) Create(ctx context.Context, q store.DBTX, input CreateInput) (Bot, error) <span class="cov0" title="0">{
+        const query = `
+INSERT INTO bots (name, role, runtime, status, repo_hint, version, config_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, name, role, runtime, status, repo_hint, version, config_json, created_at, updated_at
+`
+
+        var item Bot
+        err := q.QueryRow(ctx, query,
+                input.Name,
+                input.Role,
+                input.Runtime,
+                input.Status,
+                input.RepoHint,
+                input.Version,
+                input.ConfigJSON,
+        ).Scan(
+                &amp;item.ID,
+                &amp;item.Name,
+                &amp;item.Role,
+                &amp;item.Runtime,
+                &amp;item.Status,
+                &amp;item.RepoHint,
+                &amp;item.Version,
+                &amp;item.ConfigJSON,
+                &amp;item.CreatedAt,
+                &amp;item.UpdatedAt,
+        )
+        return item, err
+}</span>
+
+func (r *PostgresRepository) Update(ctx context.Context, q store.DBTX, item Bot) (Bot, error) <span class="cov0" title="0">{
+        const query = `
+UPDATE bots
+SET
+  name = $2,
+  role = $3,
+  runtime = $4,
+  status = $5,
+  repo_hint = $6,
+  version = $7,
+  config_json = $8,
+  updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, role, runtime, status, repo_hint, version, config_json, created_at, updated_at
+`
+
+        var updated Bot
+        err := q.QueryRow(ctx, query,
+                item.ID,
+                item.Name,
+                item.Role,
+                item.Runtime,
+                item.Status,
+                item.RepoHint,
+                item.Version,
+                item.ConfigJSON,
+        ).Scan(
+                &amp;updated.ID,
+                &amp;updated.Name,
+                &amp;updated.Role,
+                &amp;updated.Runtime,
+                &amp;updated.Status,
+                &amp;updated.RepoHint,
+                &amp;updated.Version,
+                &amp;updated.ConfigJSON,
+                &amp;updated.CreatedAt,
+                &amp;updated.UpdatedAt,
+        )
+        return updated, err
+}</span>
+</pre>
+		
+		<pre class="file" id="file18" style="display: none">package bots
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "strings"
+
+        "clawbot-server/internal/platform/audit"
+        "clawbot-server/internal/platform/store"
+)
+
+type Manager struct {
+        repo   Repository
+        tx     store.Transactor
+        audits audit.Recorder
+        db     store.DBTX
+}
+
+func NewManager(db store.DBTX, tx store.Transactor, repo Repository, audits audit.Recorder) *Manager <span class="cov8" title="1">{
+        return &amp;Manager{repo: repo, tx: tx, audits: audits, db: db}
+}</span>
+
+func (m *Manager) List(ctx context.Context) ([]Bot, error) <span class="cov8" title="1">{
+        return m.repo.List(ctx, m.db)
+}</span>
+
+func (m *Manager) Get(ctx context.Context, id string) (Bot, error) <span class="cov8" title="1">{
+        return m.repo.Get(ctx, m.db, id)
+}</span>
+
+func (m *Manager) Create(ctx context.Context, input CreateInput, actor string) (Bot, error) <span class="cov8" title="1">{
+        input.Name = strings.TrimSpace(input.Name)
+        if input.Name == "" </span><span class="cov0" title="0">{
+                return Bot{}, fmt.Errorf("name is required")
+        }</span>
+        <span class="cov8" title="1">if input.Status == "" </span><span class="cov8" title="1">{
+                input.Status = "active"
+        }</span>
+        <span class="cov8" title="1">if !isValidStatus(input.Status) </span><span class="cov0" title="0">{
+                return Bot{}, fmt.Errorf("invalid status %q", input.Status)
+        }</span>
+        <span class="cov8" title="1">if len(input.ConfigJSON) == 0 </span><span class="cov8" title="1">{
+                input.ConfigJSON = json.RawMessage(`{}`)
+        }</span>
+
+        <span class="cov8" title="1">var created Bot
+        err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error </span><span class="cov8" title="1">{
+                var err error
+                created, err = m.repo.Create(ctx, q, input)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">return recordAudit(ctx, m.audits, q, "bot.created", actor, created.ID, created)</span>
+        })
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return Bot{}, err
+        }</span>
+
+        <span class="cov8" title="1">return created, nil</span>
+}
+
+func (m *Manager) Update(ctx context.Context, id string, input UpdateInput, actor string) (Bot, error) <span class="cov8" title="1">{
+        var updated Bot
+        err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error </span><span class="cov8" title="1">{
+                existing, err := m.repo.Get(ctx, q, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">merged, err := merge(existing, input)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">updated, err = m.repo.Update(ctx, q, merged)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">return recordAudit(ctx, m.audits, q, "bot.updated", actor, updated.ID, updated)</span>
+        })
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return Bot{}, err
+        }</span>
+        <span class="cov8" title="1">return updated, nil</span>
+}
+
+func merge(existing Bot, input UpdateInput) (Bot, error) <span class="cov8" title="1">{
+        if input.Name != nil </span><span class="cov8" title="1">{
+                existing.Name = strings.TrimSpace(*input.Name)
+        }</span>
+        <span class="cov8" title="1">if input.Role != nil </span><span class="cov0" title="0">{
+                existing.Role = strings.TrimSpace(*input.Role)
+        }</span>
+        <span class="cov8" title="1">if input.Runtime != nil </span><span class="cov0" title="0">{
+                existing.Runtime = strings.TrimSpace(*input.Runtime)
+        }</span>
+        <span class="cov8" title="1">if input.Status != nil </span><span class="cov8" title="1">{
+                existing.Status = strings.TrimSpace(*input.Status)
+        }</span>
+        <span class="cov8" title="1">if input.RepoHint != nil </span><span class="cov0" title="0">{
+                existing.RepoHint = strings.TrimSpace(*input.RepoHint)
+        }</span>
+        <span class="cov8" title="1">if input.Version != nil </span><span class="cov0" title="0">{
+                existing.Version = strings.TrimSpace(*input.Version)
+        }</span>
+        <span class="cov8" title="1">if input.ConfigJSON != nil </span><span class="cov0" title="0">{
+                existing.ConfigJSON = *input.ConfigJSON
+        }</span>
+        <span class="cov8" title="1">if existing.Name == "" </span><span class="cov0" title="0">{
+                return Bot{}, fmt.Errorf("name is required")
+        }</span>
+        <span class="cov8" title="1">if !isValidStatus(existing.Status) </span><span class="cov8" title="1">{
+                return Bot{}, fmt.Errorf("invalid status %q", existing.Status)
+        }</span>
+        <span class="cov8" title="1">if len(existing.ConfigJSON) == 0 </span><span class="cov0" title="0">{
+                existing.ConfigJSON = json.RawMessage(`{}`)
+        }</span>
+        <span class="cov8" title="1">return existing, nil</span>
+}
+
+func isValidStatus(status string) bool <span class="cov8" title="1">{
+        switch status </span>{
+        case "active", "inactive", "deprecated":<span class="cov8" title="1">
+                return true</span>
+        default:<span class="cov8" title="1">
+                return false</span>
+        }
+}
+
+func recordAudit(ctx context.Context, recorder audit.Recorder, q store.DBTX, eventType string, actor string, entityID string, payload any) error <span class="cov8" title="1">{
+        body, err := json.Marshal(payload)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("marshal audit payload: %w", err)
+        }</span>
+        <span class="cov8" title="1">return recorder.Record(ctx, q, audit.Event{
+                EventType:  eventType,
+                EntityType: "bot",
+                EntityID:   entityID,
+                Actor:      actor,
+                Payload:    body,
+        })</span>
+}
+</pre>
+		
+		<pre class="file" id="file19" style="display: none">package ops
+
+import (
+        "context"
+        "fmt"
+        "sort"
+        "sync"
+        "time"
+
+        "clawbot-server/internal/platform/store"
+        "clawbot-server/internal/version"
+)
+
+const (
+        defaultServiceTypeControlPlane = "control-plane"
+        defaultServiceTypeMemory       = "memory"
+        defaultServiceTypeApplication  = "application"
+
+        serviceClawbotServer  = "clawbot-server"
+        serviceClawmem        = "clawmem"
+        serviceExampleApp     = "downstream-app"
+        schedulerHeartbeatID  = "service-heartbeat-scan"
+        schedulerSyncID       = "control-plane-sync"
+        schedulerReconcileID  = "maintenance-reconciliation"
+        defaultRunDurationMS  = int64(175)
+        defaultRetentionLimit = 50
+)
+
+type Service interface {
+        Overview(context.Context) (Overview, error)
+        ListServices(context.Context) ([]ServiceStatus, error)
+        GetService(context.Context, string) (ServiceStatus, error)
+        SetMaintenance(context.Context, string, string) (ServiceStatus, error)
+        ResumeService(context.Context, string, string) (ServiceStatus, error)
+        ListSchedulers(context.Context) ([]SchedulerStatus, error)
+        GetScheduler(context.Context, string) (SchedulerStatus, error)
+        PauseScheduler(context.Context, string, string) (SchedulerStatus, error)
+        ResumeScheduler(context.Context, string, string) (SchedulerStatus, error)
+        RunSchedulerOnce(context.Context, string, string) (SchedulerStatus, error)
+        ListEvents(context.Context) ([]ActivityEvent, error)
+}
+
+type Manager struct {
+        mu         sync.RWMutex
+        now        func() time.Time
+        build      version.Info
+        nextEvent  int
+        services   map[string]*serviceRecord
+        schedulers map[string]*schedulerRecord
+        events     []ActivityEvent
+}
+
+type serviceRecord struct {
+        status       ServiceStatus
+        startedAt    time.Time
+        activeStatus string
+}
+
+type schedulerRecord struct {
+        status SchedulerStatus
+}
+
+func NewManager(build version.Info) *Manager <span class="cov8" title="1">{
+        return newManagerWithClock(build, time.Now)
+}</span>
+
+func newManagerWithClock(build version.Info, now func() time.Time) *Manager <span class="cov8" title="1">{
+        current := now()
+        manager := &amp;Manager{
+                now:        now,
+                build:      build,
+                services:   seedServices(build, current),
+                schedulers: seedSchedulers(current),
+                events:     seedEvents(current),
+                nextEvent:  len(seedEvents(current)),
+        }
+        return manager
+}</span>
+
+func (m *Manager) Overview(_ context.Context) (Overview, error) <span class="cov8" title="1">{
+        m.mu.RLock()
+        defer m.mu.RUnlock()
+
+        var overview Overview
+        overview.LastUpdatedAt = m.now()
+
+        for _, record := range m.services </span><span class="cov8" title="1">{
+                overview.ServicesTotal++
+                switch serviceStatus(record) </span>{
+                case StatusHealthy:<span class="cov8" title="1">
+                        overview.ServicesHealthy++</span>
+                case StatusDegraded:<span class="cov8" title="1">
+                        overview.ServicesDegraded++</span>
+                case StatusDown:<span class="cov8" title="1">
+                        overview.ServicesDown++</span>
+                case StatusMaintenance:<span class="cov8" title="1">
+                        overview.ServicesMaintenance++</span>
+                }
+
+                <span class="cov8" title="1">if record.status.LastError != "" </span><span class="cov8" title="1">{
+                        overview.RecentFailures++
+                }</span>
+        }
+
+        <span class="cov8" title="1">for _, record := range m.schedulers </span><span class="cov8" title="1">{
+                if record.status.Enabled </span><span class="cov8" title="1">{
+                        overview.SchedulersActive++
+                }</span> else<span class="cov8" title="1"> {
+                        overview.SchedulersPaused++
+                }</span>
+                <span class="cov8" title="1">if record.status.LastError != "" </span><span class="cov8" title="1">{
+                        overview.RecentFailures++
+                }</span>
+        }
+
+        <span class="cov8" title="1">overview.Status = deriveOverallStatus(overview)
+        return overview, nil</span>
+}
+
+func (m *Manager) ListServices(_ context.Context) ([]ServiceStatus, error) <span class="cov8" title="1">{
+        m.mu.RLock()
+        defer m.mu.RUnlock()
+
+        services := make([]ServiceStatus, 0, len(m.services))
+        for _, record := range m.services </span><span class="cov8" title="1">{
+                services = append(services, snapshotService(record, m.now()))
+        }</span>
+        <span class="cov8" title="1">sort.Slice(services, func(i, j int) bool </span><span class="cov8" title="1">{
+                return services[i].Name &lt; services[j].Name
+        }</span>)
+        <span class="cov8" title="1">return services, nil</span>
+}
+
+func (m *Manager) GetService(_ context.Context, id string) (ServiceStatus, error) <span class="cov8" title="1">{
+        m.mu.RLock()
+        defer m.mu.RUnlock()
+
+        record, ok := m.services[id]
+        if !ok </span><span class="cov8" title="1">{
+                return ServiceStatus{}, fmt.Errorf("service %q: %w", id, store.ErrNotFound)
+        }</span>
+
+        <span class="cov0" title="0">return snapshotService(record, m.now()), nil</span>
+}
+
+func (m *Manager) SetMaintenance(_ context.Context, id string, actor string) (ServiceStatus, error) <span class="cov8" title="1">{
+        m.mu.Lock()
+        defer m.mu.Unlock()
+        return m.setMaintenanceLocked(id, actor, true)
+}</span>
+
+func (m *Manager) ResumeService(_ context.Context, id string, actor string) (ServiceStatus, error) <span class="cov8" title="1">{
+        m.mu.Lock()
+        defer m.mu.Unlock()
+        return m.setMaintenanceLocked(id, actor, false)
+}</span>
+
+func (m *Manager) ListSchedulers(_ context.Context) ([]SchedulerStatus, error) <span class="cov8" title="1">{
+        m.mu.RLock()
+        defer m.mu.RUnlock()
+
+        schedulers := make([]SchedulerStatus, 0, len(m.schedulers))
+        for _, record := range m.schedulers </span><span class="cov8" title="1">{
+                schedulers = append(schedulers, snapshotScheduler(record))
+        }</span>
+        <span class="cov8" title="1">sort.Slice(schedulers, func(i, j int) bool </span><span class="cov8" title="1">{
+                return schedulers[i].Name &lt; schedulers[j].Name
+        }</span>)
+        <span class="cov8" title="1">return schedulers, nil</span>
+}
+
+func (m *Manager) GetScheduler(_ context.Context, id string) (SchedulerStatus, error) <span class="cov8" title="1">{
+        m.mu.RLock()
+        defer m.mu.RUnlock()
+
+        record, ok := m.schedulers[id]
+        if !ok </span><span class="cov8" title="1">{
+                return SchedulerStatus{}, fmt.Errorf("scheduler %q: %w", id, store.ErrNotFound)
+        }</span>
+
+        <span class="cov0" title="0">return snapshotScheduler(record), nil</span>
+}
+
+func (m *Manager) PauseScheduler(_ context.Context, id string, actor string) (SchedulerStatus, error) <span class="cov8" title="1">{
+        m.mu.Lock()
+        defer m.mu.Unlock()
+
+        record, ok := m.schedulers[id]
+        if !ok </span><span class="cov0" title="0">{
+                return SchedulerStatus{}, fmt.Errorf("scheduler %q: %w", id, store.ErrNotFound)
+        }</span>
+
+        <span class="cov8" title="1">record.status.Enabled = false
+        record.status.NextRunAt = nil
+        record.status.LastResult = ResultPaused
+        record.status.LastError = ""
+        m.recordEventLocked(record.status.ID, actor, "scheduler.paused", SeverityWarn, fmt.Sprintf("Paused scheduler %s.", record.status.Name))
+        return snapshotScheduler(record), nil</span>
+}
+
+func (m *Manager) ResumeScheduler(_ context.Context, id string, actor string) (SchedulerStatus, error) <span class="cov8" title="1">{
+        m.mu.Lock()
+        defer m.mu.Unlock()
+
+        record, ok := m.schedulers[id]
+        if !ok </span><span class="cov8" title="1">{
+                return SchedulerStatus{}, fmt.Errorf("scheduler %q: %w", id, store.ErrNotFound)
+        }</span>
+
+        <span class="cov8" title="1">now := m.now()
+        record.status.Enabled = true
+        record.status.NextRunAt = timePointer(now.Add(time.Duration(record.status.IntervalSeconds) * time.Second))
+        record.status.LastResult = ResultOK
+        record.status.LastError = ""
+        m.recordEventLocked(record.status.ID, actor, "scheduler.resumed", SeverityInfo, fmt.Sprintf("Resumed scheduler %s.", record.status.Name))
+        return snapshotScheduler(record), nil</span>
+}
+
+func (m *Manager) RunSchedulerOnce(_ context.Context, id string, actor string) (SchedulerStatus, error) <span class="cov8" title="1">{
+        m.mu.Lock()
+        defer m.mu.Unlock()
+
+        record, ok := m.schedulers[id]
+        if !ok </span><span class="cov0" title="0">{
+                return SchedulerStatus{}, fmt.Errorf("scheduler %q: %w", id, store.ErrNotFound)
+        }</span>
+
+        <span class="cov8" title="1">now := m.now()
+        record.status.LastRunAt = timePointer(now)
+        record.status.LastResult = ResultManualTriggered
+        record.status.LastDurationMS = defaultRunDurationMS
+        record.status.LastError = ""
+        if record.status.Enabled </span><span class="cov8" title="1">{
+                record.status.NextRunAt = timePointer(now.Add(time.Duration(record.status.IntervalSeconds) * time.Second))
+        }</span>
+        <span class="cov8" title="1">m.recordEventLocked(record.status.ID, actor, "scheduler.run_once", SeverityInfo, fmt.Sprintf("Triggered scheduler %s for one immediate run.", record.status.Name))
+        return snapshotScheduler(record), nil</span>
+}
+
+func (m *Manager) ListEvents(_ context.Context) ([]ActivityEvent, error) <span class="cov8" title="1">{
+        m.mu.RLock()
+        defer m.mu.RUnlock()
+
+        events := append([]ActivityEvent(nil), m.events...)
+        sort.Slice(events, func(i, j int) bool </span><span class="cov8" title="1">{
+                return events[i].Time.After(events[j].Time)
+        }</span>)
+        <span class="cov8" title="1">if len(events) &gt; defaultRetentionLimit </span><span class="cov0" title="0">{
+                events = events[:defaultRetentionLimit]
+        }</span>
+        <span class="cov8" title="1">return events, nil</span>
+}
+
+func (m *Manager) setMaintenanceLocked(id string, actor string, enabled bool) (ServiceStatus, error) <span class="cov8" title="1">{
+        record, ok := m.services[id]
+        if !ok </span><span class="cov8" title="1">{
+                return ServiceStatus{}, fmt.Errorf("service %q: %w", id, store.ErrNotFound)
+        }</span>
+
+        <span class="cov8" title="1">record.status.MaintenanceMode = enabled
+        record.status.LastHeartbeatAt = m.now()
+        eventType := "service.resumed"
+        severity := SeverityInfo
+        message := fmt.Sprintf("Resumed service %s from maintenance mode.", record.status.Name)
+        if enabled </span><span class="cov8" title="1">{
+                eventType = "service.maintenance.enabled"
+                severity = SeverityWarn
+                message = fmt.Sprintf("Placed service %s into maintenance mode.", record.status.Name)
+        }</span>
+
+        <span class="cov8" title="1">m.recordEventLocked(record.status.ID, actor, eventType, severity, message)
+        return snapshotService(record, m.now()), nil</span>
+}
+
+func (m *Manager) recordEventLocked(source string, actor string, eventType string, severity string, message string) <span class="cov8" title="1">{
+        m.nextEvent++
+        entry := ActivityEvent{
+                ID:        fmt.Sprintf("evt-%03d", m.nextEvent),
+                Time:      m.now(),
+                Source:    source,
+                EventType: eventType,
+                Severity:  severity,
+                Message:   formatEventMessage(actor, message),
+        }
+        m.events = append([]ActivityEvent{entry}, m.events...)
+        if len(m.events) &gt; defaultRetentionLimit </span><span class="cov8" title="1">{
+                m.events = m.events[:defaultRetentionLimit]
+        }</span>
+}
+
+func snapshotService(record *serviceRecord, now time.Time) ServiceStatus <span class="cov8" title="1">{
+        status := record.status
+        status.Status = serviceStatus(record)
+        status.UptimeSeconds = int64(now.Sub(record.startedAt).Seconds())
+        status.DependencyStatus = copyDependencyStatus(status.DependencyStatus)
+        return status
+}</span>
+
+func snapshotScheduler(record *schedulerRecord) SchedulerStatus <span class="cov8" title="1">{
+        status := record.status
+        if status.LastRunAt != nil </span><span class="cov8" title="1">{
+                lastRun := *status.LastRunAt
+                status.LastRunAt = &amp;lastRun
+        }</span>
+        <span class="cov8" title="1">if status.NextRunAt != nil </span><span class="cov8" title="1">{
+                nextRun := *status.NextRunAt
+                status.NextRunAt = &amp;nextRun
+        }</span>
+        <span class="cov8" title="1">return status</span>
+}
+
+func serviceStatus(record *serviceRecord) string <span class="cov8" title="1">{
+        if record.status.MaintenanceMode </span><span class="cov8" title="1">{
+                return StatusMaintenance
+        }</span>
+        <span class="cov8" title="1">return record.activeStatus</span>
+}
+
+func deriveOverallStatus(overview Overview) string <span class="cov8" title="1">{
+        switch </span>{
+        case overview.ServicesDown &gt; 0:<span class="cov8" title="1">
+                return StatusDown</span>
+        case overview.ServicesDegraded &gt; 0:<span class="cov8" title="1">
+                return StatusDegraded</span>
+        case overview.ServicesMaintenance &gt; 0:<span class="cov8" title="1">
+                return StatusMaintenance</span>
+        default:<span class="cov8" title="1">
+                return StatusHealthy</span>
+        }
+}
+
+func seedServices(build version.Info, now time.Time) map[string]*serviceRecord <span class="cov8" title="1">{
+        return map[string]*serviceRecord{
+                serviceClawbotServer: newServiceRecord(ServiceStatus{
+                        ID:              serviceClawbotServer,
+                        Name:            "clawbot-server",
+                        ServiceType:     defaultServiceTypeControlPlane,
+                        Status:          StatusHealthy,
+                        Version:         build.Version,
+                        LastHeartbeatAt: now.Add(-15 * time.Second),
+                        DependencyStatus: map[string]string{
+                                "postgres": StatusHealthy,
+                                "redis":    StatusHealthy,
+                                "nats":     StatusHealthy,
+                        },
+                }, now.Add(-3*time.Hour-12*time.Minute)),
+                serviceClawmem: newServiceRecord(ServiceStatus{
+                        ID:              serviceClawmem,
+                        Name:            "clawmem",
+                        ServiceType:     defaultServiceTypeMemory,
+                        Status:          StatusHealthy,
+                        Version:         "v1",
+                        LastHeartbeatAt: now.Add(-25 * time.Second),
+                        DependencyStatus: map[string]string{
+                                "local-store": StatusHealthy,
+                        },
+                }, now.Add(-2*time.Hour-5*time.Minute)),
+                serviceExampleApp: newServiceRecord(ServiceStatus{
+                        ID:              serviceExampleApp,
+                        Name:            "downstream-app",
+                        ServiceType:     defaultServiceTypeApplication,
+                        Status:          StatusDegraded,
+                        Version:         "v1",
+                        LastHeartbeatAt: now.Add(-3 * time.Minute),
+                        LastError:       "Heartbeat latency exceeded the warning threshold.",
+                        DependencyStatus: map[string]string{
+                                "clawbot-server": StatusHealthy,
+                                "clawmem":        StatusHealthy,
+                        },
+                }, now.Add(-95*time.Minute)),
+        }
+}</span>
+
+func seedSchedulers(now time.Time) map[string]*schedulerRecord <span class="cov8" title="1">{
+        return map[string]*schedulerRecord{
+                schedulerHeartbeatID: {
+                        status: SchedulerStatus{
+                                ID:              schedulerHeartbeatID,
+                                Name:            "Service heartbeat scan",
+                                Enabled:         true,
+                                IntervalSeconds: 60,
+                                LastRunAt:       timePointer(now.Add(-35 * time.Second)),
+                                NextRunAt:       timePointer(now.Add(25 * time.Second)),
+                                LastResult:      ResultWarning,
+                                LastDurationMS:  82,
+                        },
+                },
+                schedulerSyncID: {
+                        status: SchedulerStatus{
+                                ID:              schedulerSyncID,
+                                Name:            "Control-plane sync",
+                                Enabled:         true,
+                                IntervalSeconds: 300,
+                                LastRunAt:       timePointer(now.Add(-2 * time.Minute)),
+                                NextRunAt:       timePointer(now.Add(3 * time.Minute)),
+                                LastResult:      ResultOK,
+                                LastDurationMS:  140,
+                        },
+                },
+                schedulerReconcileID: {
+                        status: SchedulerStatus{
+                                ID:              schedulerReconcileID,
+                                Name:            "Maintenance reconciliation",
+                                Enabled:         false,
+                                IntervalSeconds: 900,
+                                LastRunAt:       timePointer(now.Add(-45 * time.Minute)),
+                                LastResult:      ResultPaused,
+                                LastDurationMS:  0,
+                                LastError:       "Paused by operator for maintenance review.",
+                        },
+                },
+        }
+}</span>
+
+func seedEvents(now time.Time) []ActivityEvent <span class="cov8" title="1">{
+        return []ActivityEvent{
+                {
+                        ID:        "evt-003",
+                        Time:      now.Add(-5 * time.Minute),
+                        Source:    serviceExampleApp,
+                        EventType: "service.degraded",
+                        Severity:  SeverityWarn,
+                        Message:   "downstream-app reported delayed heartbeats and entered a degraded state.",
+                },
+                {
+                        ID:        "evt-002",
+                        Time:      now.Add(-12 * time.Minute),
+                        Source:    schedulerHeartbeatID,
+                        EventType: "scheduler.completed",
+                        Severity:  SeverityInfo,
+                        Message:   "Service heartbeat scan completed with one warning.",
+                },
+                {
+                        ID:        "evt-001",
+                        Time:      now.Add(-18 * time.Minute),
+                        Source:    serviceClawbotServer,
+                        EventType: "service.started",
+                        Severity:  SeverityInfo,
+                        Message:   "clawbot-server started and published its initial heartbeat.",
+                },
+        }
+}</span>
+
+func newServiceRecord(status ServiceStatus, startedAt time.Time) *serviceRecord <span class="cov8" title="1">{
+        return &amp;serviceRecord{
+                status:       status,
+                startedAt:    startedAt,
+                activeStatus: status.Status,
+        }
+}</span>
+
+func copyDependencyStatus(source map[string]string) map[string]string <span class="cov8" title="1">{
+        if len(source) == 0 </span><span class="cov8" title="1">{
+                return map[string]string{}
+        }</span>
+        <span class="cov8" title="1">copied := make(map[string]string, len(source))
+        for key, value := range source </span><span class="cov8" title="1">{
+                copied[key] = value
+        }</span>
+        <span class="cov8" title="1">return copied</span>
+}
+
+func formatEventMessage(actor string, message string) string <span class="cov8" title="1">{
+        if actor == "" </span><span class="cov8" title="1">{
+                return message
+        }</span>
+        <span class="cov8" title="1">return fmt.Sprintf("%s (%s)", message, actor)</span>
+}
+
+func timePointer(value time.Time) *time.Time <span class="cov8" title="1">{
+        return &amp;value
+}</span>
+</pre>
+		
+		<pre class="file" id="file20" style="display: none">package policies
+
+import (
+        "context"
+        "errors"
+
+        "clawbot-server/internal/platform/store"
+
+        "github.com/jackc/pgx/v5"
+)
+
+type PostgresRepository struct{}
+
+func NewPostgresRepository() *PostgresRepository <span class="cov0" title="0">{
+        return &amp;PostgresRepository{}
+}</span>
+
+func (r *PostgresRepository) List(ctx context.Context, q store.DBTX) ([]Policy, error) <span class="cov0" title="0">{
+        const query = `
+SELECT id, name, category, version, enabled, description, rules_json, created_at, updated_at
+FROM policies
+ORDER BY created_at DESC
+`
+
+        rows, err := q.Query(ctx, query)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var items []Policy
+        for rows.Next() </span><span class="cov0" title="0">{
+                var item Policy
+                if err := rows.Scan(
+                        &amp;item.ID,
+                        &amp;item.Name,
+                        &amp;item.Category,
+                        &amp;item.Version,
+                        &amp;item.Enabled,
+                        &amp;item.Description,
+                        &amp;item.RulesJSON,
+                        &amp;item.CreatedAt,
+                        &amp;item.UpdatedAt,
+                ); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">items = append(items, item)</span>
+        }
+        <span class="cov0" title="0">return items, rows.Err()</span>
+}
+
+func (r *PostgresRepository) Get(ctx context.Context, q store.DBTX, id string) (Policy, error) <span class="cov0" title="0">{
+        const query = `
+SELECT id, name, category, version, enabled, description, rules_json, created_at, updated_at
+FROM policies
+WHERE id = $1
+`
+
+        var item Policy
+        err := q.QueryRow(ctx, query, id).Scan(
+                &amp;item.ID,
+                &amp;item.Name,
+                &amp;item.Category,
+                &amp;item.Version,
+                &amp;item.Enabled,
+                &amp;item.Description,
+                &amp;item.RulesJSON,
+                &amp;item.CreatedAt,
+                &amp;item.UpdatedAt,
+        )
+        if errors.Is(err, pgx.ErrNoRows) </span><span class="cov0" title="0">{
+                return Policy{}, store.ErrNotFound
+        }</span>
+        <span class="cov0" title="0">return item, err</span>
+}
+
+func (r *PostgresRepository) Create(ctx context.Context, q store.DBTX, input CreateInput) (Policy, error) <span class="cov0" title="0">{
+        const query = `
+INSERT INTO policies (name, category, version, enabled, description, rules_json)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, name, category, version, enabled, description, rules_json, created_at, updated_at
+`
+
+        var item Policy
+        err := q.QueryRow(ctx, query,
+                input.Name,
+                input.Category,
+                input.Version,
+                input.Enabled,
+                input.Description,
+                input.RulesJSON,
+        ).Scan(
+                &amp;item.ID,
+                &amp;item.Name,
+                &amp;item.Category,
+                &amp;item.Version,
+                &amp;item.Enabled,
+                &amp;item.Description,
+                &amp;item.RulesJSON,
+                &amp;item.CreatedAt,
+                &amp;item.UpdatedAt,
+        )
+        return item, err
+}</span>
+
+func (r *PostgresRepository) Update(ctx context.Context, q store.DBTX, item Policy) (Policy, error) <span class="cov0" title="0">{
+        const query = `
+UPDATE policies
+SET
+  name = $2,
+  category = $3,
+  version = $4,
+  enabled = $5,
+  description = $6,
+  rules_json = $7,
+  updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, category, version, enabled, description, rules_json, created_at, updated_at
+`
+
+        var updated Policy
+        err := q.QueryRow(ctx, query,
+                item.ID,
+                item.Name,
+                item.Category,
+                item.Version,
+                item.Enabled,
+                item.Description,
+                item.RulesJSON,
+        ).Scan(
+                &amp;updated.ID,
+                &amp;updated.Name,
+                &amp;updated.Category,
+                &amp;updated.Version,
+                &amp;updated.Enabled,
+                &amp;updated.Description,
+                &amp;updated.RulesJSON,
+                &amp;updated.CreatedAt,
+                &amp;updated.UpdatedAt,
+        )
+        return updated, err
+}</span>
+</pre>
+		
+		<pre class="file" id="file21" style="display: none">package policies
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "strings"
+
+        "clawbot-server/internal/platform/audit"
+        "clawbot-server/internal/platform/store"
+)
+
+type Manager struct {
+        repo   Repository
+        tx     store.Transactor
+        audits audit.Recorder
+        db     store.DBTX
+}
+
+func NewManager(db store.DBTX, tx store.Transactor, repo Repository, audits audit.Recorder) *Manager <span class="cov8" title="1">{
+        return &amp;Manager{repo: repo, tx: tx, audits: audits, db: db}
+}</span>
+
+func (m *Manager) List(ctx context.Context) ([]Policy, error) <span class="cov8" title="1">{
+        return m.repo.List(ctx, m.db)
+}</span>
+
+func (m *Manager) Get(ctx context.Context, id string) (Policy, error) <span class="cov8" title="1">{
+        return m.repo.Get(ctx, m.db, id)
+}</span>
+
+func (m *Manager) Create(ctx context.Context, input CreateInput, actor string) (Policy, error) <span class="cov8" title="1">{
+        input.Name = strings.TrimSpace(input.Name)
+        if input.Name == "" </span><span class="cov0" title="0">{
+                return Policy{}, fmt.Errorf("name is required")
+        }</span>
+        <span class="cov8" title="1">if len(input.RulesJSON) == 0 </span><span class="cov8" title="1">{
+                input.RulesJSON = json.RawMessage(`{}`)
+        }</span>
+
+        <span class="cov8" title="1">var created Policy
+        err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error </span><span class="cov8" title="1">{
+                var err error
+                created, err = m.repo.Create(ctx, q, input)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">return recordAudit(ctx, m.audits, q, "policy.created", actor, created.ID, created)</span>
+        })
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return Policy{}, err
+        }</span>
+        <span class="cov8" title="1">return created, nil</span>
+}
+
+func (m *Manager) Update(ctx context.Context, id string, input UpdateInput, actor string) (Policy, error) <span class="cov8" title="1">{
+        var updated Policy
+        err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error </span><span class="cov8" title="1">{
+                existing, err := m.repo.Get(ctx, q, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">merged, err := merge(existing, input)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">updated, err = m.repo.Update(ctx, q, merged)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">return recordAudit(ctx, m.audits, q, "policy.updated", actor, updated.ID, updated)</span>
+        })
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return Policy{}, err
+        }</span>
+        <span class="cov8" title="1">return updated, nil</span>
+}
+
+func merge(existing Policy, input UpdateInput) (Policy, error) <span class="cov8" title="1">{
+        if input.Name != nil </span><span class="cov8" title="1">{
+                existing.Name = strings.TrimSpace(*input.Name)
+        }</span>
+        <span class="cov8" title="1">if input.Category != nil </span><span class="cov0" title="0">{
+                existing.Category = strings.TrimSpace(*input.Category)
+        }</span>
+        <span class="cov8" title="1">if input.Version != nil </span><span class="cov0" title="0">{
+                existing.Version = strings.TrimSpace(*input.Version)
+        }</span>
+        <span class="cov8" title="1">if input.Enabled != nil </span><span class="cov8" title="1">{
+                existing.Enabled = *input.Enabled
+        }</span>
+        <span class="cov8" title="1">if input.Description != nil </span><span class="cov8" title="1">{
+                existing.Description = strings.TrimSpace(*input.Description)
+        }</span>
+        <span class="cov8" title="1">if input.RulesJSON != nil </span><span class="cov0" title="0">{
+                existing.RulesJSON = *input.RulesJSON
+        }</span>
+        <span class="cov8" title="1">if existing.Name == "" </span><span class="cov8" title="1">{
+                return Policy{}, fmt.Errorf("name is required")
+        }</span>
+        <span class="cov8" title="1">if len(existing.RulesJSON) == 0 </span><span class="cov0" title="0">{
+                existing.RulesJSON = json.RawMessage(`{}`)
+        }</span>
+        <span class="cov8" title="1">return existing, nil</span>
+}
+
+func recordAudit(ctx context.Context, recorder audit.Recorder, q store.DBTX, eventType string, actor string, entityID string, payload any) error <span class="cov8" title="1">{
+        body, err := json.Marshal(payload)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("marshal audit payload: %w", err)
+        }</span>
+        <span class="cov8" title="1">return recorder.Record(ctx, q, audit.Event{
+                EventType:  eventType,
+                EntityType: "policy",
+                EntityID:   entityID,
+                Actor:      actor,
+                Payload:    body,
+        })</span>
+}
+</pre>
+		
+		<pre class="file" id="file22" style="display: none">package runs
+
+import (
+        "context"
+        "errors"
+
+        "clawbot-server/internal/platform/store"
+
+        "github.com/jackc/pgx/v5"
+)
+
+type PostgresRepository struct{}
+
+func NewPostgresRepository() *PostgresRepository <span class="cov0" title="0">{
+        return &amp;PostgresRepository{}
+}</span>
+
+func (r *PostgresRepository) List(ctx context.Context, q store.DBTX) ([]Run, error) <span class="cov0" title="0">{
+        const query = `
+SELECT id, name, description, status, scenario_type, created_by, created_at, updated_at, started_at, completed_at, metadata_json
+FROM runs
+ORDER BY created_at DESC
+`
+
+        rows, err := q.Query(ctx, query)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var items []Run
+        for rows.Next() </span><span class="cov0" title="0">{
+                var item Run
+                if err := rows.Scan(
+                        &amp;item.ID,
+                        &amp;item.Name,
+                        &amp;item.Description,
+                        &amp;item.Status,
+                        &amp;item.ScenarioType,
+                        &amp;item.CreatedBy,
+                        &amp;item.CreatedAt,
+                        &amp;item.UpdatedAt,
+                        &amp;item.StartedAt,
+                        &amp;item.CompletedAt,
+                        &amp;item.MetadataJSON,
+                ); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">items = append(items, item)</span>
+        }
+
+        <span class="cov0" title="0">return items, rows.Err()</span>
+}
+
+func (r *PostgresRepository) Get(ctx context.Context, q store.DBTX, id string) (Run, error) <span class="cov0" title="0">{
+        const query = `
+SELECT id, name, description, status, scenario_type, created_by, created_at, updated_at, started_at, completed_at, metadata_json
+FROM runs
+WHERE id = $1
+`
+
+        var item Run
+        err := q.QueryRow(ctx, query, id).Scan(
+                &amp;item.ID,
+                &amp;item.Name,
+                &amp;item.Description,
+                &amp;item.Status,
+                &amp;item.ScenarioType,
+                &amp;item.CreatedBy,
+                &amp;item.CreatedAt,
+                &amp;item.UpdatedAt,
+                &amp;item.StartedAt,
+                &amp;item.CompletedAt,
+                &amp;item.MetadataJSON,
+        )
+        if errors.Is(err, pgx.ErrNoRows) </span><span class="cov0" title="0">{
+                return Run{}, store.ErrNotFound
+        }</span>
+
+        <span class="cov0" title="0">return item, err</span>
+}
+
+func (r *PostgresRepository) Create(ctx context.Context, q store.DBTX, input CreateInput) (Run, error) <span class="cov0" title="0">{
+        const query = `
+INSERT INTO runs (
+  name,
+  description,
+  status,
+  scenario_type,
+  created_by,
+  metadata_json
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, name, description, status, scenario_type, created_by, created_at, updated_at, started_at, completed_at, metadata_json
+`
+
+        var item Run
+        err := q.QueryRow(ctx, query,
+                input.Name,
+                input.Description,
+                input.Status,
+                input.ScenarioType,
+                input.CreatedBy,
+                input.MetadataJSON,
+        ).Scan(
+                &amp;item.ID,
+                &amp;item.Name,
+                &amp;item.Description,
+                &amp;item.Status,
+                &amp;item.ScenarioType,
+                &amp;item.CreatedBy,
+                &amp;item.CreatedAt,
+                &amp;item.UpdatedAt,
+                &amp;item.StartedAt,
+                &amp;item.CompletedAt,
+                &amp;item.MetadataJSON,
+        )
+
+        return item, err
+}</span>
+
+func (r *PostgresRepository) Update(ctx context.Context, q store.DBTX, item Run) (Run, error) <span class="cov0" title="0">{
+        const query = `
+UPDATE runs
+SET
+  name = $2,
+  description = $3,
+  status = $4,
+  scenario_type = $5,
+  started_at = $6,
+  completed_at = $7,
+  metadata_json = $8,
+  updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, description, status, scenario_type, created_by, created_at, updated_at, started_at, completed_at, metadata_json
+`
+
+        var updated Run
+        err := q.QueryRow(ctx, query,
+                item.ID,
+                item.Name,
+                item.Description,
+                item.Status,
+                item.ScenarioType,
+                item.StartedAt,
+                item.CompletedAt,
+                item.MetadataJSON,
+        ).Scan(
+                &amp;updated.ID,
+                &amp;updated.Name,
+                &amp;updated.Description,
+                &amp;updated.Status,
+                &amp;updated.ScenarioType,
+                &amp;updated.CreatedBy,
+                &amp;updated.CreatedAt,
+                &amp;updated.UpdatedAt,
+                &amp;updated.StartedAt,
+                &amp;updated.CompletedAt,
+                &amp;updated.MetadataJSON,
+        )
+
+        return updated, err
+}</span>
+</pre>
+		
+		<pre class="file" id="file23" style="display: none">package runs
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "strings"
+
+        "clawbot-server/internal/platform/audit"
+        "clawbot-server/internal/platform/scheduler"
+        "clawbot-server/internal/platform/store"
+)
+
+type Manager struct {
+        repo      Repository
+        tx        store.Transactor
+        audits    audit.Recorder
+        scheduler scheduler.Service
+        db        store.DBTX
+}
+
+func NewManager(db store.DBTX, tx store.Transactor, repo Repository, audits audit.Recorder, scheduler scheduler.Service) *Manager <span class="cov8" title="1">{
+        return &amp;Manager{
+                repo:      repo,
+                tx:        tx,
+                audits:    audits,
+                scheduler: scheduler,
+                db:        db,
+        }
+}</span>
+
+func (m *Manager) List(ctx context.Context) ([]Run, error) <span class="cov8" title="1">{
+        return m.repo.List(ctx, m.db)
+}</span>
+
+func (m *Manager) Get(ctx context.Context, id string) (Run, error) <span class="cov8" title="1">{
+        return m.repo.Get(ctx, m.db, id)
+}</span>
+
+func (m *Manager) Create(ctx context.Context, input CreateInput, actor string) (Run, error) <span class="cov8" title="1">{
+        input.Name = strings.TrimSpace(input.Name)
+        input.Description = strings.TrimSpace(input.Description)
+        input.ScenarioType = strings.TrimSpace(input.ScenarioType)
+        input.CreatedBy = strings.TrimSpace(input.CreatedBy)
+
+        if input.Name == "" </span><span class="cov0" title="0">{
+                return Run{}, fmt.Errorf("name is required")
+        }</span>
+        <span class="cov8" title="1">if input.Status == "" </span><span class="cov8" title="1">{
+                input.Status = "pending"
+        }</span>
+        <span class="cov8" title="1">if !isValidStatus(input.Status) </span><span class="cov0" title="0">{
+                return Run{}, fmt.Errorf("invalid status %q", input.Status)
+        }</span>
+        <span class="cov8" title="1">if len(input.MetadataJSON) == 0 </span><span class="cov8" title="1">{
+                input.MetadataJSON = json.RawMessage(`{}`)
+        }</span>
+        <span class="cov8" title="1">if input.CreatedBy == "" </span><span class="cov8" title="1">{
+                input.CreatedBy = actor
+        }</span>
+
+        <span class="cov8" title="1">var created Run
+        err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error </span><span class="cov8" title="1">{
+                var err error
+                created, err = m.repo.Create(ctx, q, input)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">if err := recordEntityAudit(ctx, m.audits, q, "run.created", actor, created.ID, created); err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">return m.scheduler.RecordRunIntent(ctx, q, scheduler.Signal{
+                        RunID:   created.ID,
+                        RunName: created.Name,
+                        Status:  created.Status,
+                        Actor:   actor,
+                        Reason:  "run.created",
+                })</span>
+        })
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return Run{}, err
+        }</span>
+
+        <span class="cov8" title="1">return created, nil</span>
+}
+
+func (m *Manager) Update(ctx context.Context, id string, input UpdateInput, actor string) (Run, error) <span class="cov8" title="1">{
+        var updated Run
+
+        err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error </span><span class="cov8" title="1">{
+                existing, err := m.repo.Get(ctx, q, id)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">merged, err := mergeRun(existing, input)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">updated, err = m.repo.Update(ctx, q, merged)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">if err := recordEntityAudit(ctx, m.audits, q, "run.updated", actor, updated.ID, updated); err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">return m.scheduler.RecordRunIntent(ctx, q, scheduler.Signal{
+                        RunID:   updated.ID,
+                        RunName: updated.Name,
+                        Status:  updated.Status,
+                        Actor:   actor,
+                        Reason:  "run.updated",
+                })</span>
+        })
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return Run{}, err
+        }</span>
+
+        <span class="cov8" title="1">return updated, nil</span>
+}
+
+func mergeRun(existing Run, input UpdateInput) (Run, error) <span class="cov8" title="1">{
+        if input.Name != nil </span><span class="cov8" title="1">{
+                existing.Name = strings.TrimSpace(*input.Name)
+        }</span>
+        <span class="cov8" title="1">if input.Description != nil </span><span class="cov0" title="0">{
+                existing.Description = strings.TrimSpace(*input.Description)
+        }</span>
+        <span class="cov8" title="1">if input.Status != nil </span><span class="cov8" title="1">{
+                existing.Status = strings.TrimSpace(*input.Status)
+        }</span>
+        <span class="cov8" title="1">if input.ScenarioType != nil </span><span class="cov0" title="0">{
+                existing.ScenarioType = strings.TrimSpace(*input.ScenarioType)
+        }</span>
+        <span class="cov8" title="1">if input.MetadataJSON != nil </span><span class="cov8" title="1">{
+                existing.MetadataJSON = *input.MetadataJSON
+        }</span>
+        <span class="cov8" title="1">if input.StartedAt != nil </span><span class="cov0" title="0">{
+                existing.StartedAt = input.StartedAt
+        }</span>
+        <span class="cov8" title="1">if input.CompletedAt != nil </span><span class="cov0" title="0">{
+                existing.CompletedAt = input.CompletedAt
+        }</span>
+
+        <span class="cov8" title="1">if existing.Name == "" </span><span class="cov8" title="1">{
+                return Run{}, fmt.Errorf("name is required")
+        }</span>
+        <span class="cov8" title="1">if !isValidStatus(existing.Status) </span><span class="cov8" title="1">{
+                return Run{}, fmt.Errorf("invalid status %q", existing.Status)
+        }</span>
+        <span class="cov8" title="1">if len(existing.MetadataJSON) == 0 </span><span class="cov0" title="0">{
+                existing.MetadataJSON = json.RawMessage(`{}`)
+        }</span>
+
+        <span class="cov8" title="1">return existing, nil</span>
+}
+
+func isValidStatus(status string) bool <span class="cov8" title="1">{
+        switch status </span>{
+        case "pending", "scheduled", "running", "completed", "failed", "cancelled":<span class="cov8" title="1">
+                return true</span>
+        default:<span class="cov8" title="1">
+                return false</span>
+        }
+}
+
+func recordEntityAudit(ctx context.Context, recorder audit.Recorder, q store.DBTX, eventType string, actor string, entityID string, payload any) error <span class="cov8" title="1">{
+        body, err := json.Marshal(payload)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("marshal audit payload: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return recorder.Record(ctx, q, audit.Event{
+                EventType:  eventType,
+                EntityType: "run",
+                EntityID:   entityID,
+                Actor:      actor,
+                Payload:    body,
+        })</span>
+}
+</pre>
+		
+		<pre class="file" id="file24" style="display: none">package scheduler
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+
+        "clawbot-server/internal/platform/audit"
+        "clawbot-server/internal/platform/store"
+)
+
+type Signal struct {
+        RunID   string `json:"run_id"`
+        RunName string `json:"run_name"`
+        Status  string `json:"status"`
+        Actor   string `json:"actor"`
+        Reason  string `json:"reason"`
+}
+
+type Service interface {
+        RecordRunIntent(context.Context, store.DBTX, Signal) error
+}
+
+type PlaceholderService struct {
+        audits audit.Recorder
+}
+
+func NewPlaceholderService(audits audit.Recorder) *PlaceholderService <span class="cov8" title="1">{
+        return &amp;PlaceholderService{audits: audits}
+}</span>
+
+func (s *PlaceholderService) RecordRunIntent(ctx context.Context, q store.DBTX, signal Signal) error <span class="cov8" title="1">{
+        payload, err := json.Marshal(map[string]any{
+                "run_id":   signal.RunID,
+                "run_name": signal.RunName,
+                "status":   signal.Status,
+                "reason":   signal.Reason,
+                "note":     "This scheduler records run intent only. Execution belongs to downstream integrations.",
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("marshal scheduler intent payload: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return s.audits.Record(ctx, q, audit.Event{
+                EventType:  "scheduler.intent.recorded",
+                EntityType: "run",
+                EntityID:   signal.RunID,
+                Actor:      signal.Actor,
+                Payload:    payload,
+        })</span>
+}
+</pre>
+		
+		<pre class="file" id="file25" style="display: none">package store
+
+import "context"
+
+type DashboardSummary struct {
+        Runs        int64 `json:"runs"`
+        Bots        int64 `json:"bots"`
+        Policies    int64 `json:"policies"`
+        AuditEvents int64 `json:"audit_events"`
+}
+
+type DashboardReader struct {
+        db DBTX
+}
+
+func NewDashboardReader(db DBTX) *DashboardReader <span class="cov8" title="1">{
+        return &amp;DashboardReader{db: db}
+}</span>
+
+func (r *DashboardReader) Summary(ctx context.Context) (DashboardSummary, error) <span class="cov8" title="1">{
+        const query = `
+SELECT
+  (SELECT COUNT(*) FROM runs) AS runs,
+  (SELECT COUNT(*) FROM bots) AS bots,
+  (SELECT COUNT(*) FROM policies) AS policies,
+  (SELECT COUNT(*) FROM audit_events) AS audit_events
+`
+
+        var summary DashboardSummary
+        if err := r.db.QueryRow(ctx, query).Scan(
+                &amp;summary.Runs,
+                &amp;summary.Bots,
+                &amp;summary.Policies,
+                &amp;summary.AuditEvents,
+        ); err != nil </span><span class="cov8" title="1">{
+                return DashboardSummary{}, err
+        }</span>
+
+        <span class="cov8" title="1">return summary, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file26" style="display: none">package store
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/jackc/pgx/v5"
+        "github.com/jackc/pgx/v5/pgconn"
+        "github.com/jackc/pgx/v5/pgxpool"
+)
+
+type DBTX interface {
+        Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+        Query(context.Context, string, ...any) (pgx.Rows, error)
+        QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+type Transactor interface {
+        InTx(context.Context, func(context.Context, DBTX) error) error
+}
+
+type Postgres struct {
+        pool *pgxpool.Pool
+}
+
+func NewPostgres(pool *pgxpool.Pool) *Postgres <span class="cov8" title="1">{
+        return &amp;Postgres{pool: pool}
+}</span>
+
+func (p *Postgres) Pool() *pgxpool.Pool <span class="cov8" title="1">{
+        return p.pool
+}</span>
+
+func (p *Postgres) Ping(ctx context.Context) error <span class="cov0" title="0">{
+        return p.pool.Ping(ctx)
+}</span>
+
+func (p *Postgres) InTx(ctx context.Context, fn func(context.Context, DBTX) error) error <span class="cov0" title="0">{
+        tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("begin transaction: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">defer func() </span><span class="cov0" title="0">{
+                _ = tx.Rollback(ctx)
+        }</span>()
+
+        <span class="cov0" title="0">if err := fn(ctx, tx); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if err := tx.Commit(ctx); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("commit transaction: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file27" style="display: none">package version
+
+var (
+        Value     = "dev"
+        Commit    = "unknown"
+        BuildDate = "unknown"
+)
+
+type Info struct {
+        Version   string `json:"version"`
+        Commit    string `json:"commit"`
+        BuildDate string `json:"build_date"`
+}
+
+func Current() Info <span class="cov8" title="1">{
+        return Info{
+                Version:   Value,
+                Commit:    Commit,
+                BuildDate: BuildDate,
+        }
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

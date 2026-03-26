@@ -1,0 +1,28 @@
+{{ define "events-content" }}
+<section class="page-header">
+  <div>
+    <h2>Recent activity</h2>
+    <p>Recent service and scheduler events with concise severity and source context.</p>
+  </div>
+  <div class="muted">{{ len .Events }} retained events</div>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr><th>Time</th><th>Source</th><th>Type</th><th>Severity</th><th>Message</th></tr>
+    </thead>
+    <tbody>
+      {{ range .Events }}
+      <tr>
+        <td>{{ formatTime .Time }}</td>
+        <td>{{ .Source }}</td>
+        <td>{{ .EventType }}</td>
+        <td><span class="status-pill {{ statusClass .Severity }}">{{ .Severity }}</span></td>
+        <td>{{ .Message }}</td>
+      </tr>
+      {{ end }}
+    </tbody>
+  </table>
+</section>
+{{ end }}

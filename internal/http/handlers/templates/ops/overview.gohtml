@@ -1,0 +1,52 @@
+{{ define "overview-content" }}
+<section class="page-header">
+  <div>
+    <h2>Overview</h2>
+    <p>One place to confirm platform health, service posture, scheduler activity, and recent operational events.</p>
+  </div>
+  <div class="status-pill {{ statusClass .Overview.Status }}">{{ .Overview.Status }}</div>
+</section>
+
+<section class="cards">
+  <div class="card"><div class="muted">Services</div><div class="metric">{{ .Overview.ServicesTotal }}</div></div>
+  <div class="card"><div class="muted">Healthy</div><div class="metric">{{ .Overview.ServicesHealthy }}</div></div>
+  <div class="card"><div class="muted">Degraded</div><div class="metric">{{ .Overview.ServicesDegraded }}</div></div>
+  <div class="card"><div class="muted">Maintenance</div><div class="metric">{{ .Overview.ServicesMaintenance }}</div></div>
+  <div class="card"><div class="muted">Active schedulers</div><div class="metric">{{ .Overview.SchedulersActive }}</div></div>
+  <div class="card"><div class="muted">Recent failures</div><div class="metric">{{ .Overview.RecentFailures }}</div></div>
+</section>
+
+<section class="grid-two">
+  <div class="panel">
+    <h3>Service posture</h3>
+    <table>
+      <thead>
+        <tr><th>Service</th><th>Status</th><th>Heartbeat</th><th>Error summary</th></tr>
+      </thead>
+      <tbody>
+        {{ range .Services }}
+        <tr>
+          <td><a href="/ops/services/{{ .ID }}">{{ .Name }}</a><div class="muted">{{ .ServiceType }}</div></td>
+          <td><span class="status-pill {{ statusClass .Status }}">{{ .Status }}</span></td>
+          <td>{{ formatTime .LastHeartbeatAt }}</td>
+          <td>{{ if .LastError }}{{ .LastError }}{{ else }}<span class="muted">No active error.</span>{{ end }}</td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>Recent activity</h3>
+    <ul class="list">
+      {{ range .Events }}
+      <li>
+        <div><strong>{{ .EventType }}</strong> <span class="status-pill {{ statusClass .Severity }}">{{ .Severity }}</span></div>
+        <div>{{ .Message }}</div>
+        <div class="muted">{{ .Source }} · {{ formatTime .Time }}</div>
+      </li>
+      {{ end }}
+    </ul>
+  </div>
+</section>
+{{ end }}

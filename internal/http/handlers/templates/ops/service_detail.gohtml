@@ -1,0 +1,44 @@
+{{ define "service-detail-content" }}
+<section class="page-header">
+  <div>
+    <h2>{{ .Service.Name }}</h2>
+    <p>{{ .Service.ServiceType }} · version {{ .Service.Version }}</p>
+  </div>
+  <div class="actions">
+    {{ if .Service.MaintenanceMode }}
+    <form method="post" action="/ops/services/{{ .Service.ID }}/resume"><button type="submit">Resume service</button></form>
+    {{ else }}
+    <form method="post" action="/ops/services/{{ .Service.ID }}/maintenance"><button type="submit">Enter maintenance</button></form>
+    {{ end }}
+  </div>
+</section>
+
+<section class="cards">
+  <div class="card"><div class="muted">Status</div><div class="metric"><span class="status-pill {{ statusClass .Service.Status }}">{{ .Service.Status }}</span></div></div>
+  <div class="card"><div class="muted">Uptime</div><div class="metric">{{ formatUptime .Service.UptimeSeconds }}</div></div>
+  <div class="card"><div class="muted">Last heartbeat</div><div class="metric" style="font-size:1.1rem">{{ formatTime .Service.LastHeartbeatAt }}</div></div>
+  <div class="card"><div class="muted">Maintenance</div><div class="metric">{{ if .Service.MaintenanceMode }}on{{ else }}off{{ end }}</div></div>
+</section>
+
+<section class="grid-two">
+  <div class="panel">
+    <h3>Dependency status</h3>
+    <ul class="list">
+      {{ range dependencyPairs .Service.DependencyStatus }}
+      <li>
+        <strong>{{ .Name }}</strong>
+        <div><span class="status-pill {{ statusClass .Status }}">{{ .Status }}</span></div>
+      </li>
+      {{ end }}
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Error summary</h3>
+    {{ if .Service.LastError }}
+    <p>{{ .Service.LastError }}</p>
+    {{ else }}
+    <p class="muted">No active error has been reported for this service.</p>
+    {{ end }}
+  </div>
+</section>
+{{ end }}

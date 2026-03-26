@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"clawbot-server/internal/platform/store"
+	"clawbot-server/internal/version"
 )
 
 func TestNewLoggerHonorsLevel(t *testing.T) {
@@ -19,9 +20,9 @@ func TestNewLoggerHonorsLevel(t *testing.T) {
 
 func TestBuildServicesReturnsManagers(t *testing.T) {
 	pg := store.NewPostgres(nil)
-	services := buildServices(pg)
+	services := buildServices(pg, version.Info{Version: "1.2.3"})
 
-	if services.runs == nil || services.bots == nil || services.policies == nil || services.dashboard == nil {
+	if services.runs == nil || services.bots == nil || services.policies == nil || services.dashboard == nil || services.ops == nil {
 		t.Fatalf("expected non-nil services %#v", services)
 	}
 }

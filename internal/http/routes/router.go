@@ -9,6 +9,7 @@ import (
 	"clawbot-server/internal/http/handlers"
 	mw "clawbot-server/internal/http/middleware"
 	"clawbot-server/internal/platform/bots"
+	"clawbot-server/internal/platform/ops"
 	"clawbot-server/internal/platform/policies"
 	"clawbot-server/internal/platform/runs"
 	"clawbot-server/internal/version"
@@ -23,6 +24,7 @@ type Services struct {
 	Bots      bots.Service
 	Policies  policies.Service
 	Dashboard handlers.DashboardService
+	Ops       ops.Service
 }
 
 func New(logger *slog.Logger, services Services) http.Handler {
@@ -38,6 +40,24 @@ func New(logger *slog.Logger, services Services) http.Handler {
 	router.Get("/readyz", services.System.Ready)
 	router.Get("/version", services.System.Version)
 
+	opsHandler := handlers.NewOpsHandler(services.Ops)
+
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ops", http.StatusSeeOther)
+	})
+	router.Route("/ops", func(r chi.Router) {
+		r.Get("/", opsHandler.OverviewPage)
+		r.Get("/services", opsHandler.ServicesPage)
+		r.Get("/services/{serviceID}", opsHandler.ServiceDetailPage)
+		r.Post("/services/{serviceID}/maintenance", opsHandler.SetMaintenancePage)
+		r.Post("/services/{serviceID}/resume", opsHandler.ResumeServicePage)
+		r.Get("/schedulers", opsHandler.SchedulersPage)
+		r.Post("/schedulers/{schedulerID}/pause", opsHandler.PauseSchedulerPage)
+		r.Post("/schedulers/{schedulerID}/resume", opsHandler.ResumeSchedulerPage)
+		r.Post("/schedulers/{schedulerID}/run-once", opsHandler.RunSchedulerOncePage)
+		r.Get("/events", opsHandler.EventsPage)
+	})
+
 	router.Route("/api/v1", func(r chi.Router) {
 		runsHandler := handlers.NewRunsHandler(services.Runs)
 		botsHandler := handlers.NewBotsHandler(services.Bots)
@@ -45,6 +65,19 @@ func New(logger *slog.Logger, services Services) http.Handler {
 		dashboardHandler := handlers.NewDashboardHandler(services.Dashboard)
 
 		r.Get("/dashboard/summary", dashboardHandler.Summary)
+		r.Route("/ops", func(r chi.Router) {
+			r.Get("/overview", opsHandler.Overview)
+			r.Get("/services", opsHandler.ListServices)
+			r.Get("/services/{serviceID}", opsHandler.GetService)
+			r.Post("/services/{serviceID}/maintenance", opsHandler.SetMaintenance)
+			r.Post("/services/{serviceID}/resume", opsHandler.ResumeService)
+			r.Get("/schedulers", opsHandler.ListSchedulers)
+			r.Get("/schedulers/{schedulerID}", opsHandler.GetScheduler)
+			r.Post("/schedulers/{schedulerID}/pause", opsHandler.PauseScheduler)
+			r.Post("/schedulers/{schedulerID}/resume", opsHandler.ResumeScheduler)
+			r.Post("/schedulers/{schedulerID}/run-once", opsHandler.RunSchedulerOnce)
+			r.Get("/events", opsHandler.ListEvents)
+		})
 
 		r.Route("/runs", func(r chi.Router) {
 			r.Get("/", runsHandler.List)

@@ -6,8 +6,14 @@ ENV_FILE := .env
 COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) -f $(COMPOSE_OVERRIDE)
 GO_ENV := GOCACHE=$(CURDIR)/.cache/go-build GOMODCACHE=$(CURDIR)/.cache/go-mod
 COVERAGE_FILE := coverage.out
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS := -X 'clawbot-server/internal/version.Value=$(VERSION)' \
+           -X 'clawbot-server/internal/version.Commit=$(COMMIT)' \
+           -X 'clawbot-server/internal/version.BuildDate=$(BUILD_DATE)'
 
-.PHONY: help check-env up down restart ps logs smoke clean lint test coverage coverage-html security compose-validate run-server migrate-up migrate-down
+.PHONY: help check-env up down restart ps logs smoke clean lint test coverage coverage-html security compose-validate build run-server migrate-up migrate-down
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ": ## "}; /^[a-zA-Z0-9_.-]+: ## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,17 +39,21 @@ smoke: ## Wait for the stack and run the Go smoke checks.
 	./scripts/wait-for-stack.sh
 	./scripts/smoke.sh
 
-run-server: check-env ## Run the Phase 1 control-plane service locally.
+build: ## Build the clawbot-server binary with version metadata.
+	@mkdir -p .cache/go-build .cache/go-mod bin
+	$(GO_ENV) go build -ldflags "$(LDFLAGS)" -o bin/clawbot-server ./cmd/clawbot-server
+
+run-server: check-env ## Run the control-plane service locally.
 	@mkdir -p .cache/go-build .cache/go-mod
-	@set -a; . ./.env; set +a; $(GO_ENV) go run ./cmd/clawbot-server serve
+	@set -a; . ./.env; set +a; $(GO_ENV) go run -ldflags "$(LDFLAGS)" ./cmd/clawbot-server serve
 
 migrate-up: check-env ## Apply embedded database migrations.
 	@mkdir -p .cache/go-build .cache/go-mod
-	@set -a; . ./.env; set +a; $(GO_ENV) go run ./cmd/clawbot-server migrate up
+	@set -a; . ./.env; set +a; $(GO_ENV) go run -ldflags "$(LDFLAGS)" ./cmd/clawbot-server migrate up
 
 migrate-down: check-env ## Roll back the latest embedded database migration.
 	@mkdir -p .cache/go-build .cache/go-mod
-	@set -a; . ./.env; set +a; $(GO_ENV) go run ./cmd/clawbot-server migrate down
+	@set -a; . ./.env; set +a; $(GO_ENV) go run -ldflags "$(LDFLAGS)" ./cmd/clawbot-server migrate down
 
 clean: check-env ## Remove the foundation stack and named volumes.
 	$(COMPOSE) down -v --remove-orphans

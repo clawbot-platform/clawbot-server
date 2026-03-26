@@ -1,6 +1,6 @@
 # Smoke Validation
 
-This directory documents the integration smoke path for the Phase 0 foundation stack.
+This directory documents the integration smoke path for the foundation stack.
 
 The active checks live in:
 
