@@ -1,0 +1,11 @@
+.cache
+.git
+.github
+.idea
+.env
+.DS_Store
+bin
+coverage.out
+coverage.html
+node_modules
+tmp

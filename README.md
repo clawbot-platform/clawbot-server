@@ -23,6 +23,31 @@ It is designed to provide:
 
 It belongs to the broader `clawbot-platform` organization, but it is not coupled to a single vertical such as DRQ or Trust Lab.
 
+## GHCR images
+
+`clawbot-server` images are published to GHCR from GitHub Actions, not from developer laptops.
+
+- image: `ghcr.io/clawbot-platform/clawbot-server`
+- immutable tag pattern: `sha-<12-char-sha>`
+- operational tag examples:
+  - `drq-v1-baseline-20260329`
+  - `drq-v1-tuned-20260401`
+
+Runtime hosts should pull published images instead of building locally. They do not need Go, npm, or other development tooling just to deploy or run the control plane.
+
+Publish from GitHub Actions with the `publish-image` workflow and a `release_tag` input such as:
+
+- `drq-v1-baseline-20260329`
+- `drq-v1-tuned-20260401`
+
+If a stale package already exists in GHCR from an older manual or CLI push and is not linked to this repository, fix that in GitHub Packages before relying on the new workflow:
+
+- connect the package to the repository, or
+- delete the stale package and republish from Actions, or
+- publish once to a temporary new image name if cleanup must be staged
+
+Avoid PAT-based publishing workarounds. The repo workflow uses the repository `GITHUB_TOKEN`.
+
 ## What this repository provides
 
 `clawbot-server` provides:
