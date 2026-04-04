@@ -2,7 +2,7 @@
 
 `clawbot-server` exposes a versioned control-plane API under `/api/v1`.
 
-The API is intentionally generic. It exists to manage platform metadata and audit-friendly lifecycle records that downstream projects can reuse.
+This surface now includes a first-class run execution contract for deterministic, llm, and dual-mode workflows plus week-run cycle orchestration, artifact manifests, comparison objects, and model profile registration.
 
 ## System endpoints
 
@@ -14,11 +14,7 @@ The API is intentionally generic. It exists to manage platform metadata and audi
 
 - `GET /api/v1/dashboard/summary`
 
-Returns aggregate counts for runs, bots, policies, and audit events.
-
 ## Operations console
-
-The operations console is a generic platform surface for service health, scheduler state, and recent operator-relevant activity.
 
 Read endpoints:
 
@@ -37,103 +33,203 @@ Safe write endpoints:
 - `POST /api/v1/ops/schedulers/{id}/resume`
 - `POST /api/v1/ops/schedulers/{id}/run-once`
 
-Example overview response:
-
-```json
-{
-  "data": {
-    "status": "degraded",
-    "services_total": 3,
-    "services_healthy": 2,
-    "services_degraded": 1,
-    "services_down": 0,
-    "services_maintenance": 0,
-    "schedulers_active": 2,
-    "schedulers_paused": 1,
-    "recent_failures": 2,
-    "last_updated_at": "2026-03-26T15:00:00Z"
-  }
-}
-```
-
-Example service response:
-
-```json
-{
-  "data": {
-    "id": "clawbot-server",
-    "name": "clawbot-server",
-    "service_type": "control-plane",
-    "status": "healthy",
-    "version": "dev",
-    "uptime_seconds": 11520,
-    "last_heartbeat_at": "2026-03-26T14:59:45Z",
-    "maintenance_mode": false,
-    "last_error": "",
-    "dependency_status": {
-      "postgres": "healthy",
-      "redis": "healthy",
-      "nats": "healthy"
-    }
-  }
-}
-```
-
-Example scheduler response:
-
-```json
-{
-  "data": {
-    "id": "control-plane-sync",
-    "name": "Control-plane sync",
-    "enabled": true,
-    "interval_seconds": 300,
-    "last_run_at": "2026-03-26T14:58:00Z",
-    "next_run_at": "2026-03-26T15:03:00Z",
-    "last_result": "ok",
-    "last_duration_ms": 140,
-    "last_error": ""
-  }
-}
-```
-
-Example recent activity response:
-
-```json
-{
-  "data": [
-    {
-      "id": "evt-003",
-      "time": "2026-03-26T14:55:00Z",
-      "source": "downstream-app",
-      "event_type": "service.degraded",
-      "severity": "warn",
-      "message": "downstream-app reported delayed heartbeats and entered a degraded state."
-    }
-  ]
-}
-```
-
-## Runs
+## Runs and RunSpec
 
 - `GET /api/v1/runs`
 - `POST /api/v1/runs`
 - `GET /api/v1/runs/{id}`
 - `PATCH /api/v1/runs/{id}`
+- `POST /api/v1/runs/{id}/start`
 
-Example create request:
+RunSpec-compatible fields on create/update include:
+
+- `run_type`: `replay_run | agent_run | week_run`
+- `execution_mode`: `deterministic | llm | dual`
+- `repo`, `domain`
+- `dataset_refs`
+- `prompt_pack_version`
+- `rule_pack_version`
+- `model_profile`
+- `guardrail_profile`
+- `memory_namespace`
+- `requested_by`
+- `started_at`, `finished_at`
+- `status`
+- `artifact_bundle_refs`
+- `review_metadata_json`
+- `notes`
+
+### Example run create request
 
 ```json
 {
-  "name": "platform-baseline",
-  "description": "Reusable control-plane run scaffold",
+  "name": "ach-week-1",
+  "description": "NACHA 2026 dual-mode showcase run",
+  "run_type": "week_run",
+  "execution_mode": "dual",
   "status": "pending",
-  "scenario_type": "placeholder",
-  "metadata_json": {
-    "owner": "platform"
-  }
+  "repo": "ach-trust-lab",
+  "domain": "ach",
+  "dataset_refs": ["data/samples/sample_ach_events.json"],
+  "prompt_pack_version": "ach-week/v1",
+  "rule_pack_version": "detectors/2026.1",
+  "model_profile": "ach-default",
+  "guardrail_profile": "ach-guardian-default",
+  "memory_namespace": {
+    "repo_namespace": "ach-trust-lab",
+    "run_namespace": "weekrun-2026-06-demo"
+  },
+  "review_metadata_json": {
+    "approval_required": true
+  },
+  "notes": "Deterministic replay remains authoritative"
 }
 ```
+
+## Artifacts
+
+- `GET /api/v1/runs/{id}/artifacts`
+- `POST /api/v1/runs/{id}/artifacts`
+
+Artifact request fields:
+
+- `cycle_id` (optional)
+- `artifact_type`
+- `uri`
+- `content_type`
+- `version`
+- `checksum`
+- `metadata_json`
+
+## Cycles (week-run orchestration)
+
+- `POST /api/v1/runs/{id}/cycles`
+- `GET /api/v1/runs/{id}/cycles/{cycleID}`
+- `PATCH /api/v1/runs/{id}/cycles/{cycleID}`
+- `POST /api/v1/runs/{id}/cycles/{cycleID}/execute`
+
+Cycle fields include:
+
+- `cycle_key` (`day-1` through `day-7` recommended)
+- `focus`
+- `objective`
+- `detector_pack`
+- `summary_ref`
+- `carry_forward_summary_ref`
+- `status`
+- `memory_snapshot_ref` (response field)
+
+Supported cycle statuses:
+
+- `pending`
+- `running`
+- `review_pending`
+- `approved`
+- `rejected`
+- `completed`
+- `failed`
+- `cancelled`
+
+## Dual-mode comparison
+
+- `GET /api/v1/runs/{id}/comparison`
+- `POST /api/v1/runs/{id}/comparison`
+
+Comparison payload supports:
+
+- `deterministic_summary`
+- `llm_summary`
+- `guardrail_summary`
+- `deltas`
+- `review_status`
+- `reviewer_notes`
+- `final_disposition`
+- `final_output`
+
+## Runtime execution behavior
+
+`POST /api/v1/runs/{id}/start` is the execution path for `agent_run` (and can run `week_run` when `cycle_id` is supplied).  
+`POST /api/v1/runs/{id}/cycles/{cycleID}/execute` is the cycle-scoped execution path for `week_run`.
+
+Execution behavior by mode:
+
+- `deterministic`
+  - builds deterministic summary output
+  - persists deterministic artifact metadata
+  - marks execution as completed
+- `llm`
+  - fetches scoped memory context first
+  - loads model profile
+  - routes inference by provider:
+    - `local_ollama`: direct Ollama HTTP `POST /api/chat` with `stream=false`
+    - `gateway` (or other providers): `POST /api/v1/inference/execute`
+  - applies per-phase timeout controls (primary / guardrail / helper)
+  - persists LLM output (and guardrail report when present)
+  - marks execution as `review_pending`
+- `dual`
+  - executes deterministic and llm paths in one execution
+  - uses compact dual payload mode when enabled (`ENABLE_COMPACT_DUAL_PAYLOAD=true`)
+  - persists both output artifacts
+  - upserts a comparison object (`deterministic_summary`, `llm_summary`, `guardrail_summary`, `deltas`)
+  - marks execution as `review_pending`
+
+Execution request payload:
+
+```json
+{
+  "cycle_id": "optional-cycle-id-for-week-run-start",
+  "agent_namespace": "daily-summary",
+  "prompt": "analyze this cycle",
+  "system_prompt": "optional system prompt",
+  "input_json": {
+    "context": "additional domain input"
+  },
+  "memory_note": "optional explicit carry-forward note"
+}
+```
+
+During execution, clawmem integration behavior is:
+
+- fetch scoped context before execution (repo/run/cycle/agent namespace)
+- persist scoped notes after execution
+- attach returned memory snapshot reference to run and cycle metadata when provided
+
+## Model profiles
+
+- `POST /api/v1/model-profiles`
+- `GET /api/v1/model-profiles/{idOrName}`
+
+`ach-default` is seeded in migrations with:
+
+- `provider`: `local_ollama`
+- `primary_model`: `ibm/granite3.3:8b`
+- `guardrail_model`: `ibm/granite3.3-guardian:8b`
+- `helper_model`: `granite4:3b`
+
+Provider behavior is explicit:
+
+- `local_ollama`:
+  - uses direct Ollama HTTP APIs
+  - does **not** call `/api/v1/inference/execute`
+  - defaults to model profile `base_url` (or falls back to `INFERENCE_BASE_URL`)
+  - can disable guardrails for local validation with `LOCAL_OLLAMA_DISABLE_GUARDRAILS=true`
+- `gateway` (or other non-Ollama providers):
+  - uses control-plane inference gateway path `/api/v1/inference/execute`
+
+Optional timeout/environment controls:
+
+- `GUARDRAIL_TIMEOUT` (duration)
+- `HELPER_TIMEOUT` (duration)
+
+## Control-plane dependencies
+
+- `GET /api/v1/control-plane/dependencies`
+
+Returns current readiness details for:
+
+- postgres
+- clawmem integration endpoint
+- inference endpoint
 
 ## Bots
 
@@ -142,43 +238,12 @@ Example create request:
 - `GET /api/v1/bots/{id}`
 - `PATCH /api/v1/bots/{id}`
 
-Example create request:
-
-```json
-{
-  "name": "shared-runtime-operator",
-  "role": "review",
-  "runtime": "zeroclaw",
-  "status": "active",
-  "repo_hint": "example-consumer-repo",
-  "version": "v1",
-  "config_json": {
-    "provider": "omniroute"
-  }
-}
-```
-
 ## Policies
 
 - `GET /api/v1/policies`
 - `POST /api/v1/policies`
 - `GET /api/v1/policies/{id}`
 - `PATCH /api/v1/policies/{id}`
-
-Example create request:
-
-```json
-{
-  "name": "default-safety-policy",
-  "category": "safety",
-  "version": "v1",
-  "enabled": true,
-  "description": "Generic control-plane policy example",
-  "rules_json": {
-    "mode": "placeholder"
-  }
-}
-```
 
 ## Response shape
 
@@ -200,11 +265,3 @@ Errors return:
   }
 }
 ```
-
-## Status notes
-
-- Run statuses are scaffolded as `pending`, `scheduled`, `running`, `completed`, `failed`, `cancelled`.
-- Bot statuses are scaffolded as `active`, `inactive`, `deprecated`.
-- Policy behavior is intentionally generic; `enabled` is the main operational field.
-- Operations console service statuses are `healthy`, `degraded`, `down`, `maintenance`.
-- Sample names in this document are illustrative only. The API is reusable by projects inside or outside the Clawbot organization.

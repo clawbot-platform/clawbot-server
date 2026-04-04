@@ -2,40 +2,39 @@
 
 ## Repository role
 
-`clawbot-server` is the reusable platform-foundation repository in the `clawbot-platform` organization.
+`clawbot-server` is the reusable control-plane repository in `clawbot-platform` and now supports compliance-oriented orchestration contracts for trust-lab workloads.
 
-It provides:
+## Layered planes
 
-- local infrastructure bootstrap
-- a small generic control-plane service
-- shared operational defaults for storage, messaging, routing, observability, and audit data
+The current architecture separates concerns into four planes:
 
-It does not own downstream business logic.
+- deterministic evidence plane: authoritative replay scoring and durable metadata
+- reasoning plane: model-backed synthesis and recommendation artifacts
+- guardrail/review plane: compliance gating and adjudication records
+- memory context plane: scoped context through clawmem namespaces
 
-## Topology
+## Control-plane entities
 
-The local topology is intentionally simple:
+The server persists and serves first-class contracts for:
 
-- ZeroClaw provides the runtime substrate
-- OmniRoute provides model ingress and routing
-- Postgres, Redis, NATS, and MinIO provide shared stateful services
-- Prometheus and Grafana provide observability
-- `clawbot-server` layers a small HTTP control plane on top of that foundation
+- RunSpec (`run_type`, `execution_mode`, model/rule/prompt/memory scope metadata)
+- cycle orchestration (`day-1` through `day-7` style lifecycle units)
+- artifact registry manifests
+- model profiles (primary, guardrail, helper routes)
+- dual-mode comparisons and reviewer disposition metadata
 
 ## Boundary decisions
 
-- domain logic stays out of this repo
-- OmniRoute remains responsible for model routing
-- ZeroClaw remains responsible for runtime behavior
-- this repo owns shared bootstrap and generic control-plane scaffolding
-- downstream repositories are consumers, not requirements
+- deterministic replay is authoritative for scored outcomes and regressions
+- LLM outputs are first-class but reviewable synthesis artifacts
+- memory improves continuity but is not the source of truth for final scored evidence
+- domain-specific ACH logic remains in downstream workers (for example, `ach-trust-lab`)
 
-## Reuse model
+## Deployment model
 
-Any downstream project can:
+The service remains Go-first and Postgres-backed, with optional dependency wiring for:
 
-- consume the shared foundation stack directly
-- call the control-plane API for generic run, bot, policy, and audit management
-- reuse the same local development and CI patterns without copying infrastructure bootstrap into its own repository
+- clawmem via `CLAWMEM_BASE_URL`
+- remote inference (for ai-precision/Ollama-style hosts) via `INFERENCE_BASE_URL`
 
-Downstream verticals are examples of consumers only. The server remains usable without any of them.
+This keeps the control plane reusable while still enabling deterministic + non-deterministic coexistence for compliance-oriented development programs.

@@ -21,6 +21,16 @@ func TestLoadServerFromEnvDefaults(t *testing.T) {
 	if cfg.ShutdownTimeout.String() != "10s" {
 		t.Fatalf("unexpected ShutdownTimeout: %s", cfg.ShutdownTimeout)
 	}
+
+	if cfg.InferenceBaseURL != "http://ai-precision:11434" {
+		t.Fatalf("unexpected InferenceBaseURL: %s", cfg.InferenceBaseURL)
+	}
+	if !cfg.EnableCompactDualPayload {
+		t.Fatal("expected EnableCompactDualPayload to default to true")
+	}
+	if cfg.DisableLocalOllamaGuardrails {
+		t.Fatal("expected DisableLocalOllamaGuardrails to default to false")
+	}
 }
 
 func TestLoadServerFromEnvRequiresDatabaseURL(t *testing.T) {
@@ -35,5 +45,14 @@ func TestLoadServerFromEnvInvalidShutdownTimeout(t *testing.T) {
 
 	if _, err := LoadServerFromEnv(); err == nil {
 		t.Fatal("expected SHUTDOWN_TIMEOUT parse error")
+	}
+}
+
+func TestLoadServerFromEnvInvalidOptionalDurations(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://clawbot:test@127.0.0.1:5432/clawbot?sslmode=disable")
+	t.Setenv("GUARDRAIL_TIMEOUT", "not-a-duration")
+
+	if _, err := LoadServerFromEnv(); err == nil {
+		t.Fatal("expected GUARDRAIL_TIMEOUT parse error")
 	}
 }

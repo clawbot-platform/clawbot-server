@@ -2,36 +2,64 @@
 
 ## What the service provides
 
-The `clawbot-server` HTTP service adds a small reusable control plane on top of the foundation stack.
-
-It provides:
+`clawbot-server` now provides a production-style control-plane contract for downstream trust-lab workloads:
 
 - versioned `/api/v1` endpoints
-- Postgres-backed persistence for runs, bots, policies, and audit events
-- dashboard-summary backend support
-- scheduler intent recording for downstream integrations
+- Postgres-backed persistence for runs, cycles, artifacts, model profiles, comparisons, bots, policies, and audit events
+- execution contracts for `deterministic`, `llm`, and `dual` modes
+- run types for `replay_run`, `agent_run`, and `week_run`
+- week-run cycle lifecycle and review-state transitions
+- artifact manifest indexing and retrieval
+- dual-mode comparison storage for deterministic vs model-backed outputs
+- clawmem namespace integration points (repo -> run -> cycle -> agent)
+- configurable remote inference client wiring for ai-precision-style model hosts
+- executable run paths for `agent_run` and cycle-scoped `week_run`
+
+## Authoritative boundary
+
+Deterministic replay remains the authoritative measurement plane. Model-backed outputs are stored as reviewable evidence and recommendations, not as silent replacements for deterministic scoring.
+
+## Execution flow
+
+When a run execution endpoint is invoked, the control plane:
+
+1. validates run type and execution mode
+2. resolves cycle context for week runs
+3. fetches clawmem scoped context (`repo -> run -> cycle -> agent`)
+4. executes deterministic and/or llm paths based on mode
+5. persists output artifacts and (for dual mode) comparison records
+6. persists scoped memory notes and snapshot references
+7. updates run/cycle status (`completed` for deterministic-only; `review_pending` for llm/dual)
+
+### Inference provider routing
+
+- `provider=local_ollama` uses direct Ollama HTTP `POST /api/chat` with `stream=false`
+- non-Ollama providers (for example `provider=gateway`) use `/api/v1/inference/execute`
+- `base_url` from the model profile is honored per execution request, with server-level fallback to `INFERENCE_BASE_URL`
+- per-phase timeouts are supported for primary, guardrail, and helper calls
+- compact dual payload mode can be toggled with `ENABLE_COMPACT_DUAL_PAYLOAD`
+- local validation can disable guardrails for Ollama with `LOCAL_OLLAMA_DISABLE_GUARDRAILS=true`
+- ACH default Granite stack:
+  - `ibm/granite3.3:8b` (primary)
+  - `ibm/granite3.3-guardian:8b` (guardrail)
+  - `granite4:3b` (helper)
 
 ## What does not belong here
 
-The control plane does not add:
+The control plane does not embed ACH business logic directly. It does not own:
 
-- downstream scenario execution
-- business- or vertical-specific workflows
-- fraud or risk engines
-- replay orchestration
-- memory-service internals
-- custom ZeroClaw runtime behavior
-- custom OmniRoute routing logic
+- NACHA policy semantics implementation
+- detector engineering details
+- replay engine internals
+- final production decisioning pipelines
+
+Those responsibilities stay in downstream domain workers such as `ach-trust-lab`.
 
 ## Package boundaries
 
-- `internal/platform/runs`, `bots`, and `policies` hold generic platform resource types and services.
+- `internal/platform/runs` owns RunSpec contracts, cycle orchestration models, artifact registry records, model profiles, comparisons, and integration adapters.
 - `internal/platform/audit` persists structured control-plane events.
-- `internal/platform/scheduler` records scheduling intent only.
+- `internal/platform/scheduler` records scheduling intent.
 - `internal/platform/store` holds common Postgres helpers and dashboard queries.
 - `internal/http` owns API delivery.
 - `internal/db` owns embedded migrations.
-
-## Relationship to downstream projects
-
-Downstream applications can consume this control plane instead of embedding their own platform-state management. Consumer repositories are examples of that model, not hard dependencies of the runtime or API surface here.

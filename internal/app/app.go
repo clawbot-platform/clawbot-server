@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"clawbot-server/internal/config"
@@ -40,6 +41,10 @@ func NewLogger(level string, writer io.Writer) *slog.Logger {
 }
 
 func RunServer(ctx context.Context, cfg config.Server, logger *slog.Logger) error {
+	if logger != nil {
+		slog.SetDefault(logger)
+	}
+
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("create postgres pool: %w", err)
@@ -54,7 +59,7 @@ func RunServer(ctx context.Context, cfg config.Server, logger *slog.Logger) erro
 
 	pg := store.NewPostgres(pool)
 	buildInfo := version.Current()
-	services := buildServices(pg, buildInfo)
+	services := buildServices(pg, buildInfo, cfg)
 	router := routes.New(logger, routes.Services{
 		System:    routes.NewSystemHandler(pg.Ping),
 		Runs:      services.runs,
@@ -116,7 +121,7 @@ type appServices struct {
 	ops       *ops.Manager
 }
 
-func buildServices(pg *store.Postgres, buildInfo version.Info) appServices {
+func buildServices(pg *store.Postgres, buildInfo version.Info, cfg config.Server) appServices {
 	auditRepo := audit.NewPostgresRepository()
 	audits := audit.NewService(auditRepo)
 	schedulerService := scheduler.NewPlaceholderService(audits)
@@ -125,8 +130,34 @@ func buildServices(pg *store.Postgres, buildInfo version.Info) appServices {
 	botsRepo := bots.NewPostgresRepository()
 	policiesRepo := policies.NewPostgresRepository()
 
+	memoryClient := runs.MemoryClient(runs.NewNoopMemoryClient())
+	if strings.TrimSpace(cfg.ClawmemBaseURL) != "" {
+		memoryClient = runs.NewHTTPMemoryClient(cfg.ClawmemBaseURL, cfg.ClawmemTimeout)
+	}
+
+	inferenceClient := runs.InferenceClient(runs.NewNoopInferenceClient())
+	if strings.TrimSpace(cfg.InferenceBaseURL) != "" {
+		inferenceClient = runs.NewHTTPInferenceClient(cfg.InferenceBaseURL, cfg.InferenceTimeout)
+	}
+
 	return appServices{
-		runs:      runs.NewManager(pg.Pool(), pg, runsRepo, audits, schedulerService),
+		runs: runs.NewManagerWithIntegrations(
+			pg.Pool(),
+			pg,
+			runsRepo,
+			audits,
+			schedulerService,
+			memoryClient,
+			inferenceClient,
+			runs.DependencyConfig{
+				ClawmemBaseURL:               cfg.ClawmemBaseURL,
+				InferenceBaseURL:             cfg.InferenceBaseURL,
+				GuardrailTimeout:             cfg.GuardrailTimeout,
+				HelperTimeout:                cfg.HelperTimeout,
+				DisableLocalOllamaGuardrails: cfg.DisableLocalOllamaGuardrails,
+				EnableCompactDualPayload:     cfg.EnableCompactDualPayload,
+			},
+		),
 		bots:      bots.NewManager(pg.Pool(), pg, botsRepo, audits),
 		policies:  policies.NewManager(pg.Pool(), pg, policiesRepo, audits),
 		dashboard: store.NewDashboardReader(pg.Pool()),

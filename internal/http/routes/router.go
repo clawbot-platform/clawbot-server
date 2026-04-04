@@ -84,6 +84,24 @@ func New(logger *slog.Logger, services Services) http.Handler {
 			r.Post("/", runsHandler.Create)
 			r.Get("/{runID}", runsHandler.Get)
 			r.Patch("/{runID}", runsHandler.Update)
+			r.Post("/{runID}/start", runsHandler.StartRun)
+			r.Get("/{runID}/artifacts", runsHandler.ListArtifacts)
+			r.Post("/{runID}/artifacts", runsHandler.AttachArtifact)
+			r.Post("/{runID}/cycles", runsHandler.CreateCycle)
+			r.Get("/{runID}/cycles/{cycleID}", runsHandler.GetCycle)
+			r.Patch("/{runID}/cycles/{cycleID}", runsHandler.UpdateCycle)
+			r.Post("/{runID}/cycles/{cycleID}/execute", runsHandler.ExecuteCycleRun)
+			r.Get("/{runID}/comparison", runsHandler.GetComparison)
+			r.Post("/{runID}/comparison", runsHandler.UpsertComparison)
+		})
+
+		r.Route("/model-profiles", func(r chi.Router) {
+			r.Post("/", runsHandler.RegisterModelProfile)
+			r.Get("/{modelProfileID}", runsHandler.GetModelProfile)
+		})
+
+		r.Route("/control-plane", func(r chi.Router) {
+			r.Get("/dependencies", runsHandler.DependencyHealth)
 		})
 
 		r.Route("/bots", func(r chi.Router) {

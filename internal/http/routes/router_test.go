@@ -30,6 +30,42 @@ func (runsStub) Create(context.Context, runs.CreateInput, string) (runs.Run, err
 func (runsStub) Update(context.Context, string, runs.UpdateInput, string) (runs.Run, error) {
 	return runs.Run{}, nil
 }
+func (runsStub) StartRun(context.Context, string, runs.ExecuteRunInput, string) (runs.ExecuteRunResult, error) {
+	return runs.ExecuteRunResult{}, nil
+}
+func (runsStub) ExecuteCycleRun(context.Context, string, string, runs.ExecuteRunInput, string) (runs.ExecuteRunResult, error) {
+	return runs.ExecuteRunResult{}, nil
+}
+func (runsStub) CreateCycle(context.Context, string, runs.CreateCycleInput, string) (runs.Cycle, error) {
+	return runs.Cycle{}, nil
+}
+func (runsStub) GetCycle(context.Context, string, string) (runs.Cycle, error) {
+	return runs.Cycle{}, nil
+}
+func (runsStub) UpdateCycle(context.Context, string, string, runs.UpdateCycleInput, string) (runs.Cycle, error) {
+	return runs.Cycle{}, nil
+}
+func (runsStub) AttachArtifact(context.Context, string, runs.AttachArtifactInput, string) (runs.Artifact, error) {
+	return runs.Artifact{}, nil
+}
+func (runsStub) ListArtifacts(context.Context, string) ([]runs.Artifact, error) {
+	return nil, nil
+}
+func (runsStub) UpsertComparison(context.Context, string, runs.UpsertComparisonInput, string) (runs.Comparison, error) {
+	return runs.Comparison{}, nil
+}
+func (runsStub) GetComparison(context.Context, string) (runs.Comparison, error) {
+	return runs.Comparison{}, nil
+}
+func (runsStub) RegisterModelProfile(context.Context, runs.RegisterModelProfileInput, string) (runs.ModelProfile, error) {
+	return runs.ModelProfile{}, nil
+}
+func (runsStub) GetModelProfile(context.Context, string) (runs.ModelProfile, error) {
+	return runs.ModelProfile{}, nil
+}
+func (runsStub) DependencyHealth(context.Context) (runs.DependencyHealth, error) {
+	return runs.DependencyHealth{Status: "healthy"}, nil
+}
 
 type botsStub struct{}
 

@@ -59,6 +59,26 @@ Avoid PAT-based publishing workarounds. The repo workflow uses the repository `G
 - local development and validation workflows
 - a reusable foundation stack for projects beyond Clawbot Trust Lab
 
+## ACH Trust Lab Control-Plane Upgrade (April 2026)
+
+This repository now includes a production-style control-plane contract used by the redesigned `ach-trust-lab` program:
+
+- first-class RunSpec fields for execution mode, run type, model/guardrail profiles, prompt/rule packs, and memory scope metadata
+- run orchestration modes: `deterministic`, `llm`, and `dual`
+- run types: `replay_run`, `agent_run`, and `week_run`
+- week-run cycle entities with lifecycle status transitions and carry-forward references
+- artifact registry endpoints for replay, agent, summary, guardrail, and bundle references
+- dual-mode comparison objects with review/adjudication metadata
+- model profile registration and retrieval (including seeded `ach-default`)
+- clawmem integration adapters for scoped namespace note persistence
+- configurable inference adapter wiring for ai-precision-style remote model hosts
+  - `provider=local_ollama` talks directly to Ollama (`/api/chat`, `stream=false`)
+  - `provider=gateway` (or other non-Ollama providers) uses `/api/v1/inference/execute`
+  - per-phase timeout controls are supported for primary / guardrail / helper calls
+  - compact dual payload mode and local Ollama guardrail-disable are controlled by env flags
+
+Deterministic replay remains the authoritative measurement path. LLM and dual outputs are persisted as reviewable, versioned artifacts alongside deterministic evidence.
+
 ## Local foundation stack
 
 This repository uses a **core vs optional** Docker Compose split.
