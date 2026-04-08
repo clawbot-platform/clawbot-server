@@ -26,7 +26,8 @@ SET
                        WHEN requested_by = '' THEN created_by
                        ELSE requested_by
         END
-WHERE completed_at IS NOT NULL OR created_by <> '';
+WHERE completed_at IS NOT NULL
+   OR (created_by IS NOT NULL AND created_by <> '');
 
 CREATE INDEX IF NOT EXISTS idx_runs_run_type ON runs (run_type);
 CREATE INDEX IF NOT EXISTS idx_runs_execution_mode ON runs (execution_mode);
