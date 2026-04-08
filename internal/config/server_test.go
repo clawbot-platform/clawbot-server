@@ -52,7 +52,7 @@ func clearServerEnv(t *testing.T) {
 
 func TestLoadServerFromEnvDefaults(t *testing.T) {
 	clearServerEnv(t)
-	t.Setenv("DATABASE_URL", "postgres://clawbot:test@127.0.0.1:5432/clawbot?sslmode=disable")
+	t.Setenv("DATABASE_URL", "postgres://clawbot@127.0.0.1:5432/clawbot?sslmode=disable")
 
 	cfg, err := LoadServerFromEnv()
 	if err != nil {
@@ -101,7 +101,7 @@ func TestLoadServerFromEnvRequiresDatabaseURL(t *testing.T) {
 
 func TestLoadServerFromEnvInvalidShutdownTimeout(t *testing.T) {
 	clearServerEnv(t)
-	t.Setenv("DATABASE_URL", "postgres://clawbot:test@127.0.0.1:5432/clawbot?sslmode=disable")
+	t.Setenv("DATABASE_URL", "postgres://clawbot@127.0.0.1:5432/clawbot?sslmode=disable")
 	t.Setenv("SHUTDOWN_TIMEOUT", "later")
 
 	if _, err := LoadServerFromEnv(); err == nil {
@@ -111,7 +111,7 @@ func TestLoadServerFromEnvInvalidShutdownTimeout(t *testing.T) {
 
 func TestLoadServerFromEnvInvalidOptionalDurations(t *testing.T) {
 	clearServerEnv(t)
-	t.Setenv("DATABASE_URL", "postgres://clawbot:test@127.0.0.1:5432/clawbot?sslmode=disable")
+	t.Setenv("DATABASE_URL", "postgres://clawbot@127.0.0.1:5432/clawbot?sslmode=disable")
 	t.Setenv("GUARDRAIL_TIMEOUT", "not-a-duration")
 
 	if _, err := LoadServerFromEnv(); err == nil {
