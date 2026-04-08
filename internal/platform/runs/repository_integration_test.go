@@ -45,7 +45,7 @@ func resetIntegrationTables(t *testing.T, pool *pgxpool.Pool) {
 	defer cancel()
 
 	if _, err := pool.Exec(ctx, `
-TRUNCATE TABLE run_comparisons, run_artifacts, run_cycles, runs RESTART IDENTITY CASCADE;
+TRUNCATE TABLE governance_audit_events, run_review_actions, policy_decisions, run_comparisons, run_artifacts, run_cycles, runs RESTART IDENTITY CASCADE;
 DELETE FROM model_profiles WHERE name <> 'ach-default';
 `); err != nil {
 		t.Fatalf("reset integration tables: %v", err)
@@ -61,6 +61,8 @@ func createIntegrationRun(ctx context.Context, t *testing.T, repo *PostgresRepos
 		Status:             string(RunStatusPending),
 		RunType:            runType,
 		ExecutionMode:      mode,
+		ExecutionRing:      defaultExecutionRingForMode(mode),
+		GuardrailStatus:    string(GuardrailStatusDisabled),
 		Repo:               "ach-trust-lab",
 		Domain:             "ach",
 		DatasetRefs:        []string{"data/samples/sample_ach_events.json"},
@@ -119,12 +121,13 @@ func TestRepositoryRunCyclesDBBacked(t *testing.T) {
 	run := createIntegrationRun(ctx, t, repo, pool, string(RunTypeWeekRun), string(ExecutionModeDual))
 
 	cycle, err := repo.CreateCycle(ctx, pool, run.ID, CreateCycleInput{
-		CycleKey:     "day-1",
-		Focus:        "descriptor controls",
-		Objective:    "evaluate descriptor risk signals",
-		DetectorPack: "detectors/v1",
-		Status:       string(CycleStatusPending),
-		MetadataJSON: json.RawMessage(`{"phase":1}`),
+		CycleKey:      "day-1",
+		Focus:         "descriptor controls",
+		Objective:     "evaluate descriptor risk signals",
+		DetectorPack:  "detectors/v1",
+		ExecutionRing: string(ExecutionRing2),
+		Status:        string(CycleStatusPending),
+		MetadataJSON:  json.RawMessage(`{"phase":1}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateCycle() error = %v", err)
@@ -154,7 +157,7 @@ func TestRepositoryRunArtifactsDBBacked(t *testing.T) {
 	ctx := context.Background()
 
 	run := createIntegrationRun(ctx, t, repo, pool, string(RunTypeWeekRun), string(ExecutionModeDual))
-	cycle, err := repo.CreateCycle(ctx, pool, run.ID, CreateCycleInput{CycleKey: "day-2", Status: string(CycleStatusPending), MetadataJSON: json.RawMessage(`{}`)})
+	cycle, err := repo.CreateCycle(ctx, pool, run.ID, CreateCycleInput{CycleKey: "day-2", ExecutionRing: string(ExecutionRing2), Status: string(CycleStatusPending), MetadataJSON: json.RawMessage(`{}`)})
 	if err != nil {
 		t.Fatalf("CreateCycle() error = %v", err)
 	}
@@ -190,7 +193,7 @@ func TestRepositoryRunComparisonsDBBacked(t *testing.T) {
 	ctx := context.Background()
 
 	run := createIntegrationRun(ctx, t, repo, pool, string(RunTypeWeekRun), string(ExecutionModeDual))
-	cycle, err := repo.CreateCycle(ctx, pool, run.ID, CreateCycleInput{CycleKey: "day-3", Status: string(CycleStatusPending), MetadataJSON: json.RawMessage(`{}`)})
+	cycle, err := repo.CreateCycle(ctx, pool, run.ID, CreateCycleInput{CycleKey: "day-3", ExecutionRing: string(ExecutionRing2), Status: string(CycleStatusPending), MetadataJSON: json.RawMessage(`{}`)})
 	if err != nil {
 		t.Fatalf("CreateCycle() error = %v", err)
 	}

@@ -47,6 +47,33 @@ The seeded default profile maps to:
 
 Endpoint routing is configured by environment (`INFERENCE_BASE_URL`) to support remote ai-precision-style hosts without hardcoding host-specific IPs.
 
+### 5. Governance decision point and execution rings are mandatory
+
+Control-plane actions are policy-gated before mutation or execution:
+
+- run create
+- cycle create
+- run/cycle execution
+- artifact attach
+- reviewer actions
+
+Execution ring requirements are enforced:
+
+- `deterministic` requires `ring_1`+
+- `llm` and `dual` require `ring_2`+
+- external actions require `ring_3`
+
+Policy decisions and reviewer actions are persisted and tied into hash-chained governance audit events.
+
+### 6. Local Guardian guardrails run in fast non-thinking mode
+
+For local Ollama validation, guardrail calls use compact payloads and force:
+
+- `think:false`
+- `stream:false`
+
+This keeps inline Guardian practical while preserving separated primary/guardrail phases and explicit fallback statuses.
+
 ## Consequences
 
 - deterministic evidence remains defensible for compliance and regression control

@@ -76,6 +76,12 @@ This repository now includes a production-style control-plane contract used by t
   - `provider=gateway` (or other non-Ollama providers) uses `/api/v1/inference/execute`
   - per-phase timeout controls are supported for primary / guardrail / helper calls
   - compact dual payload mode and local Ollama guardrail-disable are controlled by env flags
+- governance hardening controls:
+  - policy decision point before run/cycle execution actions
+  - execution rings (`ring_0` to `ring_3`)
+  - reviewer action endpoints (`approve`, `reject`, `override`, `defer`)
+  - guardrail fallback status mapping and `guardrail_deferred` run/cycle states
+  - hash-chained governance audit events
 
 Deterministic replay remains the authoritative measurement path. LLM and dual outputs are persisted as reviewable, versioned artifacts alongside deterministic evidence.
 

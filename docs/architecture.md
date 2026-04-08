@@ -12,6 +12,7 @@ The current architecture separates concerns into four planes:
 - reasoning plane: model-backed synthesis and recommendation artifacts
 - guardrail/review plane: compliance gating and adjudication records
 - memory context plane: scoped context through clawmem namespaces
+- governance plane: policy decision point, execution rings, reviewer actions, hash-chained audit events
 
 ## Control-plane entities
 
@@ -22,6 +23,7 @@ The server persists and serves first-class contracts for:
 - artifact registry manifests
 - model profiles (primary, guardrail, helper routes)
 - dual-mode comparisons and reviewer disposition metadata
+- policy decisions, reviewer action records, and hash-chained governance events
 
 ## Boundary decisions
 

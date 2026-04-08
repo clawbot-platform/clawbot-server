@@ -19,28 +19,37 @@ func (transactorStub) InTx(ctx context.Context, fn func(context.Context, store.D
 }
 
 type repositoryStub struct {
-	runsByID        map[string]Run
-	runOrder        []string
-	cyclesByID      map[string]Cycle
-	artifacts       []Artifact
-	comparisonByRun map[string]Comparison
-	profilesByName  map[string]ModelProfile
-	profilesByID    map[string]ModelProfile
-	nextRunID       int
-	nextCycleID     int
-	nextArtifactID  int
-	nextCompareID   int
-	nextProfileID   int
+	runsByID           map[string]Run
+	runOrder           []string
+	cyclesByID         map[string]Cycle
+	artifacts          []Artifact
+	comparisonByRun    map[string]Comparison
+	profilesByName     map[string]ModelProfile
+	profilesByID       map[string]ModelProfile
+	policyDecisions    []PolicyDecision
+	governanceEvents   []GovernanceAuditEvent
+	reviewActions      []ReviewActionRecord
+	nextRunID          int
+	nextCycleID        int
+	nextArtifactID     int
+	nextCompareID      int
+	nextProfileID      int
+	nextPolicyID       int
+	nextReviewActionID int
+	nextGovEventID     int
 }
 
 func newRepositoryStub() *repositoryStub {
 	return &repositoryStub{
-		runsByID:        map[string]Run{},
-		cyclesByID:      map[string]Cycle{},
-		artifacts:       []Artifact{},
-		comparisonByRun: map[string]Comparison{},
-		profilesByName:  map[string]ModelProfile{},
-		profilesByID:    map[string]ModelProfile{},
+		runsByID:         map[string]Run{},
+		cyclesByID:       map[string]Cycle{},
+		artifacts:        []Artifact{},
+		comparisonByRun:  map[string]Comparison{},
+		profilesByName:   map[string]ModelProfile{},
+		profilesByID:     map[string]ModelProfile{},
+		policyDecisions:  []PolicyDecision{},
+		governanceEvents: []GovernanceAuditEvent{},
+		reviewActions:    []ReviewActionRecord{},
 	}
 }
 
@@ -71,6 +80,8 @@ func (s *repositoryStub) Create(_ context.Context, _ store.DBTX, input CreateInp
 		ScenarioType:       input.ScenarioType,
 		RunType:            input.RunType,
 		ExecutionMode:      input.ExecutionMode,
+		ExecutionRing:      input.ExecutionRing,
+		GuardrailStatus:    input.GuardrailStatus,
 		Repo:               input.Repo,
 		Domain:             input.Domain,
 		DatasetRefs:        input.DatasetRefs,
@@ -113,6 +124,8 @@ func (s *repositoryStub) CreateCycle(_ context.Context, _ store.DBTX, runID stri
 		Focus:                  input.Focus,
 		Objective:              input.Objective,
 		DetectorPack:           input.DetectorPack,
+		ExecutionRing:          input.ExecutionRing,
+		GuardrailStatus:        string(GuardrailStatusDisabled),
 		SummaryRef:             input.SummaryRef,
 		CarryForwardSummaryRef: input.CarryForwardSummaryRef,
 		Status:                 input.Status,
@@ -246,6 +259,68 @@ func (s *repositoryStub) GetModelProfile(_ context.Context, _ store.DBTX, idOrNa
 		return item, nil
 	}
 	return ModelProfile{}, store.ErrNotFound
+}
+
+func (s *repositoryStub) RecordPolicyDecision(_ context.Context, _ store.DBTX, input PolicyDecisionInput) (PolicyDecision, error) {
+	s.nextPolicyID++
+	item := PolicyDecision{
+		ID:                  fmt.Sprintf("policy-%d", s.nextPolicyID),
+		ActionType:          input.ActionType,
+		TargetRunID:         input.TargetRunID,
+		TargetCycleID:       input.TargetCycleID,
+		ActorID:             input.ActorID,
+		ActorType:           input.ActorType,
+		PolicyInput:         input.PolicyInput,
+		Allow:               input.Allow,
+		PolicyBundleID:      input.PolicyBundleID,
+		PolicyBundleVersion: input.PolicyBundleVersion,
+		ReasonCode:          input.ReasonCode,
+		ConditionsApplied:   input.ConditionsApplied,
+		FallbackMode:        input.FallbackMode,
+	}
+	s.policyDecisions = append(s.policyDecisions, item)
+	return item, nil
+}
+
+func (s *repositoryStub) RecordReviewAction(_ context.Context, _ store.DBTX, runID string, input ReviewActionInput, priorStatus string, newStatus string) (ReviewActionRecord, error) {
+	s.nextReviewActionID++
+	item := ReviewActionRecord{
+		ID:               fmt.Sprintf("review-%d", s.nextReviewActionID),
+		RunID:            runID,
+		CycleID:          input.CycleID,
+		ReviewerID:       input.ReviewerID,
+		ReviewerType:     input.ReviewerType,
+		ActionType:       input.Action,
+		PriorStatus:      priorStatus,
+		NewStatus:        newStatus,
+		Rationale:        input.Rationale,
+		PolicyDecisionID: input.PolicyDecisionID,
+	}
+	s.reviewActions = append(s.reviewActions, item)
+	return item, nil
+}
+
+func (s *repositoryStub) AppendGovernanceAuditEvent(_ context.Context, _ store.DBTX, input GovernanceAuditEventInput) (GovernanceAuditEvent, error) {
+	s.nextGovEventID++
+	prev := ""
+	if len(s.governanceEvents) > 0 {
+		prev = s.governanceEvents[len(s.governanceEvents)-1].CurrentEventHash
+	}
+	item := GovernanceAuditEvent{
+		ID:                fmt.Sprintf("gov-%d", s.nextGovEventID),
+		PreviousEventHash: prev,
+		CurrentEventHash:  fmt.Sprintf("hash-%d", s.nextGovEventID),
+		ActorID:           input.ActorID,
+		ActorType:         input.ActorType,
+		ActionType:        input.ActionType,
+		TargetRunID:       input.TargetRunID,
+		TargetCycleID:     input.TargetCycleID,
+		TargetArtifactID:  input.TargetArtifactID,
+		PolicyDecisionID:  input.PolicyDecisionID,
+		PayloadSummary:    input.PayloadSummary,
+	}
+	s.governanceEvents = append(s.governanceEvents, item)
+	return item, nil
 }
 
 type auditStub struct {
@@ -831,4 +906,231 @@ func TestGuardrailInvocationPathSelection(t *testing.T) {
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func TestPolicyDecisionDeniedForLowExecutionRing(t *testing.T) {
+	repo := newRepositoryStub()
+	manager := NewManager(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{})
+
+	_, err := manager.Create(context.Background(), CreateInput{
+		Name:          "llm-low-ring",
+		RunType:       string(RunTypeAgentRun),
+		ExecutionMode: string(ExecutionModeLLM),
+		ExecutionRing: string(ExecutionRing1),
+	}, "owner")
+	if err == nil {
+		t.Fatal("expected policy denial for llm with ring_1")
+	}
+	if len(repo.policyDecisions) == 0 {
+		t.Fatal("expected policy decision to be recorded")
+	}
+	if repo.policyDecisions[len(repo.policyDecisions)-1].Allow {
+		t.Fatal("expected last policy decision to be deny")
+	}
+}
+
+func TestReviewActionUpdatesRunStatusAndPersistsAction(t *testing.T) {
+	repo := newRepositoryStub()
+	manager := NewManager(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{})
+
+	run, err := manager.Create(context.Background(), CreateInput{
+		Name:          "review-run",
+		RunType:       string(RunTypeAgentRun),
+		ExecutionMode: string(ExecutionModeLLM),
+		ExecutionRing: string(ExecutionRing2),
+		Status:        string(RunStatusReviewPending),
+	}, "owner")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	updated, err := manager.ReviewAction(context.Background(), run.ID, ReviewActionInput{
+		Action:     "approve",
+		ReviewerID: "reviewer-1",
+		Rationale:  "all checks passed",
+	}, "reviewer-1")
+	if err != nil {
+		t.Fatalf("ReviewAction() error = %v", err)
+	}
+	if updated.Status != string(RunStatusApproved) {
+		t.Fatalf("expected approved status, got %s", updated.Status)
+	}
+	if len(repo.reviewActions) != 1 {
+		t.Fatalf("expected one review action record, got %d", len(repo.reviewActions))
+	}
+	if repo.reviewActions[0].PriorStatus != string(RunStatusReviewPending) {
+		t.Fatalf("unexpected review action record %#v", repo.reviewActions[0])
+	}
+}
+
+func TestGuardrailFallbackSetsDeferredState(t *testing.T) {
+	repo := newRepositoryStub()
+	_, _ = repo.RegisterModelProfile(context.Background(), nil, RegisterModelProfileInput{
+		Name:               "ach-default",
+		Provider:           "local_ollama",
+		BaseURL:            "http://ai-precision:11434",
+		PrimaryModel:       "ibm/granite3.3:8b",
+		GuardrailModel:     "ibm/granite3.3-guardian:8b",
+		HelperModel:        "granite4:3b",
+		TimeoutSeconds:     45,
+		Temperature:        0.1,
+		MaxTokens:          4096,
+		ConnectionMetadata: json.RawMessage(`{}`),
+	}, "system")
+
+	inference := &inferenceStub{
+		response: InferenceResponse{
+			PrimaryOutput:   json.RawMessage(`{"summary":"ok"}`),
+			GuardrailStatus: string(GuardrailStatusTimeout),
+			GuardrailText:   "guardrail timeout",
+		},
+	}
+	manager := NewManagerWithIntegrations(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{}, &memoryStub{}, inference, DependencyConfig{})
+
+	run, err := manager.Create(context.Background(), CreateInput{
+		Name:          "guardrail-fallback",
+		RunType:       string(RunTypeAgentRun),
+		ExecutionMode: string(ExecutionModeLLM),
+		ExecutionRing: string(ExecutionRing2),
+		ModelProfile:  "ach-default",
+	}, "owner")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	result, err := manager.StartRun(context.Background(), run.ID, ExecuteRunInput{}, "owner")
+	if err != nil {
+		t.Fatalf("StartRun() error = %v", err)
+	}
+	if result.Status != string(RunStatusGuardrailDeferred) {
+		t.Fatalf("expected guardrail_deferred run status, got %s", result.Status)
+	}
+	if result.GuardrailStatus != string(GuardrailStatusTimeout) {
+		t.Fatalf("expected guardrail timeout status, got %s", result.GuardrailStatus)
+	}
+}
+
+func TestGovernanceEventsUseHashChainOrdering(t *testing.T) {
+	repo := newRepositoryStub()
+	manager := NewManager(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{})
+
+	run, err := manager.Create(context.Background(), CreateInput{Name: "hash-run"}, "owner")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	_, err = manager.AttachArtifact(context.Background(), run.ID, AttachArtifactInput{
+		ArtifactType: "replay_output",
+		URI:          "s3://bundle.json",
+		Version:      "v1",
+	}, "owner")
+	if err != nil {
+		t.Fatalf("AttachArtifact() error = %v", err)
+	}
+
+	if len(repo.governanceEvents) < 3 {
+		t.Fatalf("expected governance events to be recorded, got %d", len(repo.governanceEvents))
+	}
+	for i := 1; i < len(repo.governanceEvents); i++ {
+		if repo.governanceEvents[i].PreviousEventHash != repo.governanceEvents[i-1].CurrentEventHash {
+			t.Fatalf("expected hash-chain continuity at event %d", i)
+		}
+	}
+}
+
+func TestStartRunLLMGuardrailsEnabledProducesGuardrailSummary(t *testing.T) {
+	repo := newRepositoryStub()
+	_, _ = repo.RegisterModelProfile(context.Background(), nil, RegisterModelProfileInput{
+		Name:               "ach-default",
+		Provider:           "local_ollama",
+		BaseURL:            "http://ai-precision:11434",
+		PrimaryModel:       "ibm/granite3.3:8b",
+		GuardrailModel:     "ibm/granite3.3-guardian:8b",
+		HelperModel:        "granite4:3b",
+		TimeoutSeconds:     45,
+		Temperature:        0.1,
+		MaxTokens:          4096,
+		ConnectionMetadata: json.RawMessage(`{}`),
+	}, "system")
+
+	inference := &inferenceStub{
+		response: InferenceResponse{
+			PrimaryOutput:   json.RawMessage(`{"summary":"ok"}`),
+			GuardrailOutput: json.RawMessage(`{"decision":"allow","status":"guardrail_passed"}`),
+			GuardrailStatus: string(GuardrailStatusPassed),
+		},
+	}
+	manager := NewManagerWithIntegrations(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{}, &memoryStub{}, inference, DependencyConfig{})
+
+	run, _ := manager.Create(context.Background(), CreateInput{
+		Name:          "llm-guard-run",
+		RunType:       string(RunTypeAgentRun),
+		ExecutionMode: string(ExecutionModeLLM),
+		ExecutionRing: string(ExecutionRing2),
+		ModelProfile:  "ach-default",
+	}, "owner")
+
+	result, err := manager.StartRun(context.Background(), run.ID, ExecuteRunInput{}, "owner")
+	if err != nil {
+		t.Fatalf("StartRun() error = %v", err)
+	}
+	if result.GuardrailStatus != string(GuardrailStatusPassed) {
+		t.Fatalf("expected guardrail_passed status, got %s", result.GuardrailStatus)
+	}
+	if string(result.GuardrailSummary) == "{}" {
+		t.Fatalf("expected guardrail summary to be populated")
+	}
+}
+
+func TestExecuteCycleRunDualGuardrailsEnabledSetsComparisonGuardrailPresent(t *testing.T) {
+	repo := newRepositoryStub()
+	_, _ = repo.RegisterModelProfile(context.Background(), nil, RegisterModelProfileInput{
+		Name:               "ach-default",
+		Provider:           "local_ollama",
+		BaseURL:            "http://ai-precision:11434",
+		PrimaryModel:       "ibm/granite3.3:8b",
+		GuardrailModel:     "ibm/granite3.3-guardian:8b",
+		HelperModel:        "granite4:3b",
+		TimeoutSeconds:     45,
+		Temperature:        0.1,
+		MaxTokens:          4096,
+		ConnectionMetadata: json.RawMessage(`{}`),
+	}, "system")
+
+	inference := &inferenceStub{
+		response: InferenceResponse{
+			PrimaryOutput:   json.RawMessage(`{"summary":"cycle llm"}`),
+			GuardrailOutput: json.RawMessage(`{"decision":"allow","status":"guardrail_passed"}`),
+			GuardrailStatus: string(GuardrailStatusPassed),
+		},
+	}
+	manager := NewManagerWithIntegrations(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{}, &memoryStub{}, inference, DependencyConfig{EnableCompactDualPayload: true})
+
+	run, _ := manager.Create(context.Background(), CreateInput{
+		Name:          "week-run-guard",
+		RunType:       string(RunTypeWeekRun),
+		ExecutionMode: string(ExecutionModeDual),
+		ExecutionRing: string(ExecutionRing2),
+		ModelProfile:  "ach-default",
+	}, "owner")
+	cycle, _ := manager.CreateCycle(context.Background(), run.ID, CreateCycleInput{
+		CycleKey: "day-1",
+		Status:   string(CycleStatusPending),
+	}, "owner")
+
+	result, err := manager.ExecuteCycleRun(context.Background(), run.ID, cycle.ID, ExecuteRunInput{}, "owner")
+	if err != nil {
+		t.Fatalf("ExecuteCycleRun() error = %v", err)
+	}
+	if result.Comparison == nil {
+		t.Fatalf("expected comparison for dual mode")
+	}
+
+	var deltas map[string]any
+	if err := json.Unmarshal(result.Comparison.Deltas, &deltas); err != nil {
+		t.Fatalf("unmarshal deltas: %v", err)
+	}
+	if present, _ := deltas["guardrail_present"].(bool); !present {
+		t.Fatalf("expected guardrail_present=true, got %#v", deltas)
+	}
 }

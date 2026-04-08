@@ -26,6 +26,9 @@ type Server struct {
 	HelperModel                  string
 	DisableLocalOllamaGuardrails bool
 	EnableCompactDualPayload     bool
+	DefaultExecutionRing         string
+	PolicyBundleID               string
+	PolicyBundleVersion          string
 }
 
 func LoadServerFromEnv() (Server, error) {
@@ -43,6 +46,9 @@ func LoadServerFromEnv() (Server, error) {
 		HelperModel:                  envOrDefault("HELPER_MODEL", "granite4:3b"),
 		DisableLocalOllamaGuardrails: parseBool(envOrDefault("LOCAL_OLLAMA_DISABLE_GUARDRAILS", "false")),
 		EnableCompactDualPayload:     parseBool(envOrDefault("ENABLE_COMPACT_DUAL_PAYLOAD", "true")),
+		DefaultExecutionRing:         envOrDefault("DEFAULT_EXECUTION_RING", "ring_1"),
+		PolicyBundleID:               envOrDefault("POLICY_BUNDLE_ID", "ach-governance"),
+		PolicyBundleVersion:          envOrDefault("POLICY_BUNDLE_VERSION", "2026.1"),
 	}
 
 	shutdownTimeout, err := time.ParseDuration(envOrDefault("SHUTDOWN_TIMEOUT", "10s"))
@@ -57,21 +63,21 @@ func LoadServerFromEnv() (Server, error) {
 	}
 	cfg.ClawmemTimeout = clawmemTimeout
 
-	inferenceTimeout, err := time.ParseDuration(envOrDefault("INFERENCE_TIMEOUT", "45s"))
+	inferenceTimeout, err := time.ParseDuration(envOrDefault("INFERENCE_TIMEOUT", "120s"))
 	if err != nil {
 		return Server{}, fmt.Errorf("parse INFERENCE_TIMEOUT: %w", err)
 	}
 	cfg.InferenceTimeout = inferenceTimeout
 
-	guardrailTimeout, err := parseOptionalDuration("GUARDRAIL_TIMEOUT")
+	guardrailTimeout, err := time.ParseDuration(envOrDefault("GUARDRAIL_TIMEOUT", "30s"))
 	if err != nil {
-		return Server{}, err
+		return Server{}, fmt.Errorf("parse GUARDRAIL_TIMEOUT: %w", err)
 	}
 	cfg.GuardrailTimeout = guardrailTimeout
 
-	helperTimeout, err := parseOptionalDuration("HELPER_TIMEOUT")
+	helperTimeout, err := time.ParseDuration(envOrDefault("HELPER_TIMEOUT", "30s"))
 	if err != nil {
-		return Server{}, err
+		return Server{}, fmt.Errorf("parse HELPER_TIMEOUT: %w", err)
 	}
 	cfg.HelperTimeout = helperTimeout
 
@@ -100,16 +106,4 @@ func parseBool(value string) bool {
 	default:
 		return false
 	}
-}
-
-func parseOptionalDuration(envKey string) (time.Duration, error) {
-	raw := strings.TrimSpace(os.Getenv(envKey))
-	if raw == "" {
-		return 0, nil
-	}
-	value, err := time.ParseDuration(raw)
-	if err != nil {
-		return 0, fmt.Errorf("parse %s: %w", envKey, err)
-	}
-	return value, nil
 }

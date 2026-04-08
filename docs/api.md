@@ -45,6 +45,7 @@ RunSpec-compatible fields on create/update include:
 
 - `run_type`: `replay_run | agent_run | week_run`
 - `execution_mode`: `deterministic | llm | dual`
+- `execution_ring`: `ring_0 | ring_1 | ring_2 | ring_3`
 - `repo`, `domain`
 - `dataset_refs`
 - `prompt_pack_version`
@@ -55,6 +56,7 @@ RunSpec-compatible fields on create/update include:
 - `requested_by`
 - `started_at`, `finished_at`
 - `status`
+- `guardrail_status`
 - `artifact_bundle_refs`
 - `review_metadata_json`
 - `notes`
@@ -114,6 +116,7 @@ Cycle fields include:
 - `focus`
 - `objective`
 - `detector_pack`
+- `execution_ring`
 - `summary_ref`
 - `carry_forward_summary_ref`
 - `status`
@@ -129,6 +132,11 @@ Supported cycle statuses:
 - `completed`
 - `failed`
 - `cancelled`
+- `guardrail_deferred`
+- `failed_runtime`
+- `failed_policy`
+- `overridden`
+- `deferred`
 
 ## Dual-mode comparison
 
@@ -165,13 +173,21 @@ Execution behavior by mode:
     - `gateway` (or other providers): `POST /api/v1/inference/execute`
   - applies per-phase timeout controls (primary / guardrail / helper)
   - persists LLM output (and guardrail report when present)
-  - marks execution as `review_pending`
+  - marks execution as `review_pending` or `guardrail_deferred` based on guardrail outcome
 - `dual`
   - executes deterministic and llm paths in one execution
   - uses compact dual payload mode when enabled (`ENABLE_COMPACT_DUAL_PAYLOAD=true`)
   - persists both output artifacts
   - upserts a comparison object (`deterministic_summary`, `llm_summary`, `guardrail_summary`, `deltas`)
   - marks execution as `review_pending`
+
+Guardrail outcome statuses surfaced in run/cycle metadata:
+
+- `guardrail_passed`
+- `guardrail_flagged`
+- `guardrail_timeout`
+- `guardrail_unavailable`
+- `guardrail_disabled`
 
 Execution request payload:
 
@@ -212,6 +228,7 @@ Provider behavior is explicit:
   - uses direct Ollama HTTP APIs
   - does **not** call `/api/v1/inference/execute`
   - defaults to model profile `base_url` (or falls back to `INFERENCE_BASE_URL`)
+  - guardrail requests force `think:false`, `stream:false`, and compact payloads
   - can disable guardrails for local validation with `LOCAL_OLLAMA_DISABLE_GUARDRAILS=true`
 - `gateway` (or other non-Ollama providers):
   - uses control-plane inference gateway path `/api/v1/inference/execute`
@@ -220,6 +237,39 @@ Optional timeout/environment controls:
 
 - `GUARDRAIL_TIMEOUT` (duration)
 - `HELPER_TIMEOUT` (duration)
+
+## Reviewer actions
+
+Run-level reviewer endpoints:
+
+- `POST /api/v1/runs/{id}/approve`
+- `POST /api/v1/runs/{id}/reject`
+- `POST /api/v1/runs/{id}/override`
+- `POST /api/v1/runs/{id}/defer`
+
+Request payload:
+
+```json
+{
+  "reviewer_id": "reviewer-123",
+  "reviewer_type": "human",
+  "rationale": "manual compliance decision",
+  "cycle_id": "optional-cycle-id",
+  "policy_decision_id": "optional-policy-decision-id"
+}
+```
+
+## Governance controls
+
+The control plane now evaluates a policy decision point before:
+
+- run create
+- cycle create
+- run/cycle execution
+- artifact attach
+- reviewer actions
+
+Policy decisions and governance audit events are persisted with hash-chained sequencing metadata.
 
 ## Control-plane dependencies
 

@@ -18,6 +18,7 @@ type runsServiceStub struct {
 	getResult   runs.Run
 	createFn    func(runs.CreateInput, string) (runs.Run, error)
 	updateFn    func(string, runs.UpdateInput, string) (runs.Run, error)
+	reviewFn    func(string, runs.ReviewActionInput, string) (runs.Run, error)
 	startRunFn  func(string, runs.ExecuteRunInput, string) (runs.ExecuteRunResult, error)
 	execCycleFn func(string, string, runs.ExecuteRunInput, string) (runs.ExecuteRunResult, error)
 
@@ -42,6 +43,9 @@ func (s *runsServiceStub) Create(_ context.Context, input runs.CreateInput, acto
 }
 func (s *runsServiceStub) Update(_ context.Context, id string, input runs.UpdateInput, actor string) (runs.Run, error) {
 	return s.updateFn(id, input, actor)
+}
+func (s *runsServiceStub) ReviewAction(_ context.Context, runID string, input runs.ReviewActionInput, actor string) (runs.Run, error) {
+	return s.reviewFn(runID, input, actor)
 }
 func (s *runsServiceStub) StartRun(_ context.Context, runID string, input runs.ExecuteRunInput, actor string) (runs.ExecuteRunResult, error) {
 	return s.startRunFn(runID, input, actor)
@@ -210,6 +214,27 @@ func TestRunsHandlerDependencyHealth(t *testing.T) {
 	}
 }
 
+func TestRunsHandlerApproveRun(t *testing.T) {
+	handler := NewRunsHandler(&runsServiceStub{
+		createFn: emptyRunCreate,
+		updateFn: emptyRunUpdate,
+		reviewFn: func(runID string, input runs.ReviewActionInput, _ string) (runs.Run, error) {
+			return runs.Run{ID: runID, Status: "approved", Notes: input.Rationale}, nil
+		},
+	})
+
+	body := bytes.NewBufferString(`{"rationale":"validated and approved"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/run-1/approve", body)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	recorder := httptest.NewRecorder()
+
+	handler.ApproveRun(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+}
+
 func emptyRunCreate(runs.CreateInput, string) (runs.Run, error) {
 	return runs.Run{ID: "run-1", Name: "Run", Status: "pending"}, nil
 }
@@ -228,6 +253,11 @@ func (s *runsServiceStub) ensureDefaults() {
 	if s.startRunFn == nil {
 		s.startRunFn = func(runID string, _ runs.ExecuteRunInput, _ string) (runs.ExecuteRunResult, error) {
 			return runs.ExecuteRunResult{RunID: runID, Status: "completed"}, nil
+		}
+	}
+	if s.reviewFn == nil {
+		s.reviewFn = func(runID string, _ runs.ReviewActionInput, _ string) (runs.Run, error) {
+			return runs.Run{ID: runID, Status: "approved"}, nil
 		}
 	}
 	if s.execCycleFn == nil {

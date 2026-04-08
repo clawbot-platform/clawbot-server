@@ -2,8 +2,13 @@ package runs
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
+	"time"
 
 	"clawbot-server/internal/platform/store"
 
@@ -26,6 +31,8 @@ SELECT
   scenario_type,
   run_type,
   execution_mode,
+  execution_ring,
+  guardrail_status,
   repo,
   domain,
   dataset_refs_json,
@@ -78,6 +85,8 @@ SELECT
   scenario_type,
   run_type,
   execution_mode,
+  execution_ring,
+  guardrail_status,
   repo,
   domain,
   dataset_refs_json,
@@ -119,6 +128,8 @@ INSERT INTO runs (
   scenario_type,
   run_type,
   execution_mode,
+  execution_ring,
+  guardrail_status,
   repo,
   domain,
   dataset_refs_json,
@@ -140,8 +151,8 @@ INSERT INTO runs (
 )
 VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9,
-  $10, $11, $12, $13, $14, $15, $16, $17,
-  $18, $18, $19, $20, $21, $22, $23
+  $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+  $20, $20, $21, $22, $23, $24, $25
 )
 RETURNING
   id,
@@ -151,6 +162,8 @@ RETURNING
   scenario_type,
   run_type,
   execution_mode,
+  execution_ring,
+  guardrail_status,
   repo,
   domain,
   dataset_refs_json,
@@ -180,6 +193,8 @@ RETURNING
 		input.ScenarioType,
 		input.RunType,
 		input.ExecutionMode,
+		input.ExecutionRing,
+		input.GuardrailStatus,
 		input.Repo,
 		input.Domain,
 		mustJSON(input.DatasetRefs, []string{}),
@@ -212,23 +227,25 @@ SET
   scenario_type = $5,
   run_type = $6,
   execution_mode = $7,
-  repo = $8,
-  domain = $9,
-  dataset_refs_json = $10,
-  prompt_pack_version = $11,
-  rule_pack_version = $12,
-  model_profile = $13,
-  guardrail_profile = $14,
-  memory_namespace_json = $15,
-  requested_by = $16,
-  started_at = $17,
-  finished_at = $18,
-  completed_at = $18,
-  artifact_bundle_refs_json = $19,
-  memory_snapshot_refs_json = $20,
-  review_metadata_json = $21,
-  notes = $22,
-  metadata_json = $23,
+  execution_ring = $8,
+  guardrail_status = $9,
+  repo = $10,
+  domain = $11,
+  dataset_refs_json = $12,
+  prompt_pack_version = $13,
+  rule_pack_version = $14,
+  model_profile = $15,
+  guardrail_profile = $16,
+  memory_namespace_json = $17,
+  requested_by = $18,
+  started_at = $19,
+  finished_at = $20,
+  completed_at = $20,
+  artifact_bundle_refs_json = $21,
+  memory_snapshot_refs_json = $22,
+  review_metadata_json = $23,
+  notes = $24,
+  metadata_json = $25,
   updated_at = NOW()
 WHERE id = $1
 RETURNING
@@ -239,6 +256,8 @@ RETURNING
   scenario_type,
   run_type,
   execution_mode,
+  execution_ring,
+  guardrail_status,
   repo,
   domain,
   dataset_refs_json,
@@ -269,6 +288,8 @@ RETURNING
 		item.ScenarioType,
 		item.RunType,
 		item.ExecutionMode,
+		item.ExecutionRing,
+		item.GuardrailStatus,
 		item.Repo,
 		item.Domain,
 		mustJSON(item.DatasetRefs, []string{}),
@@ -298,13 +319,15 @@ INSERT INTO run_cycles (
   focus,
   objective,
   detector_pack,
+  execution_ring,
+  guardrail_status,
   summary_ref,
   carry_forward_summary_ref,
   status,
   metadata_json
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, run_id, cycle_key, focus, objective, detector_pack, summary_ref, carry_forward_summary_ref, memory_snapshot_ref, status, started_at, finished_at, metadata_json, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, run_id, cycle_key, focus, objective, detector_pack, execution_ring, guardrail_status, summary_ref, carry_forward_summary_ref, memory_snapshot_ref, status, started_at, finished_at, metadata_json, created_at, updated_at
 `
 
 	row := q.QueryRow(ctx, query,
@@ -313,6 +336,8 @@ RETURNING id, run_id, cycle_key, focus, objective, detector_pack, summary_ref, c
 		input.Focus,
 		input.Objective,
 		input.DetectorPack,
+		input.ExecutionRing,
+		GuardrailStatusDisabled,
 		input.SummaryRef,
 		input.CarryForwardSummaryRef,
 		input.Status,
@@ -324,7 +349,7 @@ RETURNING id, run_id, cycle_key, focus, objective, detector_pack, summary_ref, c
 
 func (r *PostgresRepository) GetCycle(ctx context.Context, q store.DBTX, runID string, cycleID string) (Cycle, error) {
 	const query = `
-SELECT id, run_id, cycle_key, focus, objective, detector_pack, summary_ref, carry_forward_summary_ref, memory_snapshot_ref, status, started_at, finished_at, metadata_json, created_at, updated_at
+SELECT id, run_id, cycle_key, focus, objective, detector_pack, execution_ring, guardrail_status, summary_ref, carry_forward_summary_ref, memory_snapshot_ref, status, started_at, finished_at, metadata_json, created_at, updated_at
 FROM run_cycles
 WHERE run_id = $1 AND id = $2
 `
@@ -344,16 +369,18 @@ SET
   focus = $2,
   objective = $3,
   detector_pack = $4,
-  summary_ref = $5,
-  carry_forward_summary_ref = $6,
-  memory_snapshot_ref = $7,
-  status = $8,
-  started_at = $9,
-  finished_at = $10,
-  metadata_json = $11,
+  execution_ring = $5,
+  guardrail_status = $6,
+  summary_ref = $7,
+  carry_forward_summary_ref = $8,
+  memory_snapshot_ref = $9,
+  status = $10,
+  started_at = $11,
+  finished_at = $12,
+  metadata_json = $13,
   updated_at = NOW()
 WHERE id = $1
-RETURNING id, run_id, cycle_key, focus, objective, detector_pack, summary_ref, carry_forward_summary_ref, memory_snapshot_ref, status, started_at, finished_at, metadata_json, created_at, updated_at
+RETURNING id, run_id, cycle_key, focus, objective, detector_pack, execution_ring, guardrail_status, summary_ref, carry_forward_summary_ref, memory_snapshot_ref, status, started_at, finished_at, metadata_json, created_at, updated_at
 `
 
 	row := q.QueryRow(ctx, query,
@@ -361,6 +388,8 @@ RETURNING id, run_id, cycle_key, focus, objective, detector_pack, summary_ref, c
 		item.Focus,
 		item.Objective,
 		item.DetectorPack,
+		item.ExecutionRing,
+		item.GuardrailStatus,
 		item.SummaryRef,
 		item.CarryForwardSummaryRef,
 		item.MemorySnapshotRef,
@@ -570,6 +599,211 @@ LIMIT 1
 	return item, err
 }
 
+func (r *PostgresRepository) RecordPolicyDecision(ctx context.Context, q store.DBTX, input PolicyDecisionInput) (PolicyDecision, error) {
+	const query = `
+INSERT INTO policy_decisions (
+  action_type,
+  target_run_id,
+  target_cycle_id,
+  actor_id,
+  actor_type,
+  policy_input_json,
+  allow,
+  policy_bundle_id,
+  policy_bundle_version,
+  reason_code,
+  conditions_applied_json,
+  fallback_mode
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, action_type, target_run_id, target_cycle_id, actor_id, actor_type, policy_input_json, allow, policy_bundle_id, policy_bundle_version, reason_code, conditions_applied_json, fallback_mode, created_at
+`
+
+	row := q.QueryRow(ctx, query,
+		input.ActionType,
+		nullableString(input.TargetRunID),
+		nullableString(input.TargetCycleID),
+		input.ActorID,
+		input.ActorType,
+		defaultRaw(input.PolicyInput, json.RawMessage(`{}`)),
+		input.Allow,
+		input.PolicyBundleID,
+		input.PolicyBundleVersion,
+		input.ReasonCode,
+		mustJSON(input.ConditionsApplied, []string{}),
+		input.FallbackMode,
+	)
+
+	var (
+		item           PolicyDecision
+		targetRunID    *string
+		targetCycleID  *string
+		policyInput    []byte
+		conditionsJSON []byte
+	)
+	if err := row.Scan(
+		&item.ID,
+		&item.ActionType,
+		&targetRunID,
+		&targetCycleID,
+		&item.ActorID,
+		&item.ActorType,
+		&policyInput,
+		&item.Allow,
+		&item.PolicyBundleID,
+		&item.PolicyBundleVersion,
+		&item.ReasonCode,
+		&conditionsJSON,
+		&item.FallbackMode,
+		&item.CreatedAt,
+	); err != nil {
+		return PolicyDecision{}, err
+	}
+	item.TargetRunID = targetRunID
+	item.TargetCycleID = targetCycleID
+	item.PolicyInput = defaultRaw(policyInput, json.RawMessage(`{}`))
+	_ = json.Unmarshal(conditionsJSON, &item.ConditionsApplied)
+	if len(item.ConditionsApplied) == 0 {
+		item.ConditionsApplied = []string{}
+	}
+
+	return item, nil
+}
+
+func (r *PostgresRepository) RecordReviewAction(ctx context.Context, q store.DBTX, runID string, input ReviewActionInput, priorStatus string, newStatus string) (ReviewActionRecord, error) {
+	const query = `
+INSERT INTO run_review_actions (
+  run_id,
+  cycle_id,
+  reviewer_id,
+  reviewer_type,
+  action_type,
+  prior_status,
+  new_status,
+  rationale,
+  policy_decision_id
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, run_id, cycle_id, reviewer_id, reviewer_type, action_type, prior_status, new_status, rationale, policy_decision_id, created_at
+`
+
+	row := q.QueryRow(ctx, query,
+		runID,
+		nullableString(input.CycleID),
+		input.ReviewerID,
+		input.ReviewerType,
+		input.Action,
+		priorStatus,
+		newStatus,
+		input.Rationale,
+		nullableString(input.PolicyDecisionID),
+	)
+
+	var (
+		item             ReviewActionRecord
+		cycleID          *string
+		policyDecisionID *string
+	)
+	if err := row.Scan(
+		&item.ID,
+		&item.RunID,
+		&cycleID,
+		&item.ReviewerID,
+		&item.ReviewerType,
+		&item.ActionType,
+		&item.PriorStatus,
+		&item.NewStatus,
+		&item.Rationale,
+		&policyDecisionID,
+		&item.CreatedAt,
+	); err != nil {
+		return ReviewActionRecord{}, err
+	}
+	item.CycleID = cycleID
+	item.PolicyDecisionID = policyDecisionID
+
+	return item, nil
+}
+
+func (r *PostgresRepository) AppendGovernanceAuditEvent(ctx context.Context, q store.DBTX, input GovernanceAuditEventInput) (GovernanceAuditEvent, error) {
+	const latestQuery = `
+SELECT current_event_hash
+FROM governance_audit_events
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+	previousHash := ""
+	if err := q.QueryRow(ctx, latestQuery).Scan(&previousHash); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return GovernanceAuditEvent{}, err
+	}
+
+	payload := defaultRaw(input.PayloadSummary, json.RawMessage(`{}`))
+	currentHash := governanceEventHash(previousHash, input, payload)
+
+	const insertQuery = `
+INSERT INTO governance_audit_events (
+  previous_event_hash,
+  current_event_hash,
+  actor_id,
+  actor_type,
+  action_type,
+  target_run_id,
+  target_cycle_id,
+  target_artifact_id,
+  policy_decision_id,
+  payload_summary_json
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, previous_event_hash, current_event_hash, actor_id, actor_type, action_type, target_run_id, target_cycle_id, target_artifact_id, policy_decision_id, payload_summary_json, created_at
+`
+
+	row := q.QueryRow(ctx, insertQuery,
+		previousHash,
+		currentHash,
+		input.ActorID,
+		input.ActorType,
+		input.ActionType,
+		nullableString(input.TargetRunID),
+		nullableString(input.TargetCycleID),
+		nullableString(input.TargetArtifactID),
+		nullableString(input.PolicyDecisionID),
+		payload,
+	)
+
+	var (
+		item             GovernanceAuditEvent
+		targetRunID      *string
+		targetCycleID    *string
+		targetArtifactID *string
+		policyDecisionID *string
+		payloadSummary   []byte
+	)
+	if err := row.Scan(
+		&item.ID,
+		&item.PreviousEventHash,
+		&item.CurrentEventHash,
+		&item.ActorID,
+		&item.ActorType,
+		&item.ActionType,
+		&targetRunID,
+		&targetCycleID,
+		&targetArtifactID,
+		&policyDecisionID,
+		&payloadSummary,
+		&item.CreatedAt,
+	); err != nil {
+		return GovernanceAuditEvent{}, err
+	}
+	item.TargetRunID = targetRunID
+	item.TargetCycleID = targetCycleID
+	item.TargetArtifactID = targetArtifactID
+	item.PolicyDecisionID = policyDecisionID
+	item.PayloadSummary = defaultRaw(payloadSummary, json.RawMessage(`{}`))
+
+	return item, nil
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
@@ -593,6 +827,8 @@ func scanRun(s scanner) (Run, error) {
 		&item.ScenarioType,
 		&item.RunType,
 		&item.ExecutionMode,
+		&item.ExecutionRing,
+		&item.GuardrailStatus,
 		&item.Repo,
 		&item.Domain,
 		&datasetRefsJSON,
@@ -645,6 +881,12 @@ func scanRun(s scanner) (Run, error) {
 	if item.FinishedAt == nil {
 		item.FinishedAt = item.CompletedAt
 	}
+	if strings.TrimSpace(item.ExecutionRing) == "" {
+		item.ExecutionRing = defaultExecutionRingForMode(item.ExecutionMode)
+	}
+	if strings.TrimSpace(item.GuardrailStatus) == "" {
+		item.GuardrailStatus = string(GuardrailStatusDisabled)
+	}
 
 	return item, nil
 }
@@ -662,6 +904,8 @@ func scanCycle(s scanner) (Cycle, error) {
 		&item.Focus,
 		&item.Objective,
 		&item.DetectorPack,
+		&item.ExecutionRing,
+		&item.GuardrailStatus,
 		&item.SummaryRef,
 		&item.CarryForwardSummaryRef,
 		&item.MemorySnapshotRef,
@@ -677,6 +921,12 @@ func scanCycle(s scanner) (Cycle, error) {
 	}
 
 	item.MetadataJSON = defaultRaw(metadataJSON, json.RawMessage(`{}`))
+	if strings.TrimSpace(item.ExecutionRing) == "" {
+		item.ExecutionRing = string(ExecutionRing1)
+	}
+	if strings.TrimSpace(item.GuardrailStatus) == "" {
+		item.GuardrailStatus = string(GuardrailStatusDisabled)
+	}
 	return item, nil
 }
 
@@ -811,4 +1061,34 @@ func valueOrDefaultBool(ptr *bool, fallback bool) bool {
 		return fallback
 	}
 	return *ptr
+}
+
+func governanceEventHash(previousHash string, input GovernanceAuditEventInput, payload json.RawMessage) string {
+	type canonical struct {
+		PreviousHash     string          `json:"previous_hash"`
+		ActorID          string          `json:"actor_id"`
+		ActorType        string          `json:"actor_type"`
+		ActionType       string          `json:"action_type"`
+		TargetRunID      *string         `json:"target_run_id,omitempty"`
+		TargetCycleID    *string         `json:"target_cycle_id,omitempty"`
+		TargetArtifactID *string         `json:"target_artifact_id,omitempty"`
+		PolicyDecisionID *string         `json:"policy_decision_id,omitempty"`
+		Payload          json.RawMessage `json:"payload"`
+		Timestamp        int64           `json:"timestamp"`
+	}
+
+	body, _ := json.Marshal(canonical{
+		PreviousHash:     previousHash,
+		ActorID:          input.ActorID,
+		ActorType:        input.ActorType,
+		ActionType:       input.ActionType,
+		TargetRunID:      input.TargetRunID,
+		TargetCycleID:    input.TargetCycleID,
+		TargetArtifactID: input.TargetArtifactID,
+		PolicyDecisionID: input.PolicyDecisionID,
+		Payload:          payload,
+		Timestamp:        time.Now().UTC().UnixNano(),
+	})
+	digest := sha256.Sum256(body)
+	return fmt.Sprintf("sha256:%s", hex.EncodeToString(digest[:]))
 }

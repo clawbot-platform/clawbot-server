@@ -12,11 +12,15 @@ type RunType string
 
 type ExecutionMode string
 
+type ExecutionRing string
+
 type RunStatus string
 
 type CycleStatus string
 
 type ReviewStatus string
+
+type GuardrailStatus string
 
 const (
 	RunTypeReplayRun RunType = "replay_run"
@@ -31,27 +35,44 @@ const (
 )
 
 const (
-	RunStatusPending       RunStatus = "pending"
-	RunStatusScheduled     RunStatus = "scheduled"
-	RunStatusRunning       RunStatus = "running"
-	RunStatusReviewPending RunStatus = "review_pending"
-	RunStatusApproved      RunStatus = "approved"
-	RunStatusRejected      RunStatus = "rejected"
-	RunStatusCompleted     RunStatus = "completed"
-	RunStatusFailed        RunStatus = "failed"
-	RunStatusCancelled     RunStatus = "cancelled"
-	RunStatusClosed        RunStatus = "closed"
+	ExecutionRing0 ExecutionRing = "ring_0"
+	ExecutionRing1 ExecutionRing = "ring_1"
+	ExecutionRing2 ExecutionRing = "ring_2"
+	ExecutionRing3 ExecutionRing = "ring_3"
 )
 
 const (
-	CycleStatusPending       CycleStatus = "pending"
-	CycleStatusRunning       CycleStatus = "running"
-	CycleStatusReviewPending CycleStatus = "review_pending"
-	CycleStatusApproved      CycleStatus = "approved"
-	CycleStatusRejected      CycleStatus = "rejected"
-	CycleStatusCompleted     CycleStatus = "completed"
-	CycleStatusFailed        CycleStatus = "failed"
-	CycleStatusCancelled     CycleStatus = "cancelled"
+	RunStatusPending           RunStatus = "pending"
+	RunStatusScheduled         RunStatus = "scheduled"
+	RunStatusRunning           RunStatus = "running"
+	RunStatusGuardrailDeferred RunStatus = "guardrail_deferred"
+	RunStatusFailedRuntime     RunStatus = "failed_runtime"
+	RunStatusFailedPolicy      RunStatus = "failed_policy"
+	RunStatusReviewPending     RunStatus = "review_pending"
+	RunStatusApproved          RunStatus = "approved"
+	RunStatusRejected          RunStatus = "rejected"
+	RunStatusOverridden        RunStatus = "overridden"
+	RunStatusDeferred          RunStatus = "deferred"
+	RunStatusCompleted         RunStatus = "completed"
+	RunStatusFailed            RunStatus = "failed"
+	RunStatusCancelled         RunStatus = "cancelled"
+	RunStatusClosed            RunStatus = "closed"
+)
+
+const (
+	CycleStatusPending           CycleStatus = "pending"
+	CycleStatusRunning           CycleStatus = "running"
+	CycleStatusGuardrailDeferred CycleStatus = "guardrail_deferred"
+	CycleStatusFailedRuntime     CycleStatus = "failed_runtime"
+	CycleStatusFailedPolicy      CycleStatus = "failed_policy"
+	CycleStatusReviewPending     CycleStatus = "review_pending"
+	CycleStatusApproved          CycleStatus = "approved"
+	CycleStatusRejected          CycleStatus = "rejected"
+	CycleStatusOverridden        CycleStatus = "overridden"
+	CycleStatusDeferred          CycleStatus = "deferred"
+	CycleStatusCompleted         CycleStatus = "completed"
+	CycleStatusFailed            CycleStatus = "failed"
+	CycleStatusCancelled         CycleStatus = "cancelled"
 )
 
 const (
@@ -59,6 +80,14 @@ const (
 	ReviewStatusApproved      ReviewStatus = "approved"
 	ReviewStatusRejected      ReviewStatus = "rejected"
 	ReviewStatusOverridden    ReviewStatus = "overridden"
+)
+
+const (
+	GuardrailStatusPassed      GuardrailStatus = "guardrail_passed"
+	GuardrailStatusFlagged     GuardrailStatus = "guardrail_flagged"
+	GuardrailStatusTimeout     GuardrailStatus = "guardrail_timeout"
+	GuardrailStatusUnavailable GuardrailStatus = "guardrail_unavailable"
+	GuardrailStatusDisabled    GuardrailStatus = "guardrail_disabled"
 )
 
 type MemoryNamespace struct {
@@ -76,6 +105,8 @@ type Run struct {
 	ScenarioType       string          `json:"scenario_type"`
 	RunType            string          `json:"run_type"`
 	ExecutionMode      string          `json:"execution_mode"`
+	ExecutionRing      string          `json:"execution_ring"`
+	GuardrailStatus    string          `json:"guardrail_status"`
 	Repo               string          `json:"repo"`
 	Domain             string          `json:"domain"`
 	DatasetRefs        []string        `json:"dataset_refs"`
@@ -105,6 +136,8 @@ type CreateInput struct {
 	ScenarioType       string          `json:"scenario_type"`
 	RunType            string          `json:"run_type"`
 	ExecutionMode      string          `json:"execution_mode"`
+	ExecutionRing      string          `json:"execution_ring"`
+	GuardrailStatus    string          `json:"guardrail_status"`
 	Repo               string          `json:"repo"`
 	Domain             string          `json:"domain"`
 	DatasetRefs        []string        `json:"dataset_refs"`
@@ -131,6 +164,8 @@ type UpdateInput struct {
 	ScenarioType       *string          `json:"scenario_type,omitempty"`
 	RunType            *string          `json:"run_type,omitempty"`
 	ExecutionMode      *string          `json:"execution_mode,omitempty"`
+	ExecutionRing      *string          `json:"execution_ring,omitempty"`
+	GuardrailStatus    *string          `json:"guardrail_status,omitempty"`
 	Repo               *string          `json:"repo,omitempty"`
 	Domain             *string          `json:"domain,omitempty"`
 	DatasetRefs        *[]string        `json:"dataset_refs,omitempty"`
@@ -218,6 +253,8 @@ type Cycle struct {
 	Focus                  string          `json:"focus"`
 	Objective              string          `json:"objective"`
 	DetectorPack           string          `json:"detector_pack"`
+	ExecutionRing          string          `json:"execution_ring"`
+	GuardrailStatus        string          `json:"guardrail_status"`
 	SummaryRef             string          `json:"summary_ref"`
 	CarryForwardSummaryRef string          `json:"carry_forward_summary_ref"`
 	MemorySnapshotRef      string          `json:"memory_snapshot_ref"`
@@ -234,6 +271,7 @@ type CreateCycleInput struct {
 	Focus                  string          `json:"focus"`
 	Objective              string          `json:"objective"`
 	DetectorPack           string          `json:"detector_pack"`
+	ExecutionRing          string          `json:"execution_ring"`
 	SummaryRef             string          `json:"summary_ref"`
 	CarryForwardSummaryRef string          `json:"carry_forward_summary_ref"`
 	Status                 string          `json:"status"`
@@ -244,6 +282,8 @@ type UpdateCycleInput struct {
 	Focus                  *string          `json:"focus,omitempty"`
 	Objective              *string          `json:"objective,omitempty"`
 	DetectorPack           *string          `json:"detector_pack,omitempty"`
+	ExecutionRing          *string          `json:"execution_ring,omitempty"`
+	GuardrailStatus        *string          `json:"guardrail_status,omitempty"`
 	SummaryRef             *string          `json:"summary_ref,omitempty"`
 	CarryForwardSummaryRef *string          `json:"carry_forward_summary_ref,omitempty"`
 	Status                 *string          `json:"status,omitempty"`
@@ -301,8 +341,90 @@ type ExecuteRunResult struct {
 	DeterministicSummary json.RawMessage `json:"deterministic_summary"`
 	LLMSummary           json.RawMessage `json:"llm_summary"`
 	GuardrailSummary     json.RawMessage `json:"guardrail_summary"`
+	GuardrailStatus      string          `json:"guardrail_status"`
 	Artifacts            []Artifact      `json:"artifacts"`
 	Comparison           *Comparison     `json:"comparison,omitempty"`
+}
+
+type PolicyDecisionInput struct {
+	ActionType          string          `json:"action_type"`
+	TargetRunID         *string         `json:"target_run_id,omitempty"`
+	TargetCycleID       *string         `json:"target_cycle_id,omitempty"`
+	ActorID             string          `json:"actor_id"`
+	ActorType           string          `json:"actor_type"`
+	PolicyInput         json.RawMessage `json:"policy_input"`
+	Allow               bool            `json:"allow"`
+	PolicyBundleID      string          `json:"policy_bundle_id"`
+	PolicyBundleVersion string          `json:"policy_bundle_version"`
+	ReasonCode          string          `json:"reason_code"`
+	ConditionsApplied   []string        `json:"conditions_applied"`
+	FallbackMode        string          `json:"fallback_mode"`
+}
+
+type PolicyDecision struct {
+	ID                  string          `json:"id"`
+	ActionType          string          `json:"action_type"`
+	TargetRunID         *string         `json:"target_run_id,omitempty"`
+	TargetCycleID       *string         `json:"target_cycle_id,omitempty"`
+	ActorID             string          `json:"actor_id"`
+	ActorType           string          `json:"actor_type"`
+	PolicyInput         json.RawMessage `json:"policy_input"`
+	Allow               bool            `json:"allow"`
+	PolicyBundleID      string          `json:"policy_bundle_id"`
+	PolicyBundleVersion string          `json:"policy_bundle_version"`
+	ReasonCode          string          `json:"reason_code"`
+	ConditionsApplied   []string        `json:"conditions_applied"`
+	FallbackMode        string          `json:"fallback_mode"`
+	CreatedAt           time.Time       `json:"created_at"`
+}
+
+type ReviewActionInput struct {
+	Action           string  `json:"action"`
+	ReviewerID       string  `json:"reviewer_id"`
+	ReviewerType     string  `json:"reviewer_type"`
+	Rationale        string  `json:"rationale"`
+	CycleID          *string `json:"cycle_id,omitempty"`
+	PolicyDecisionID *string `json:"policy_decision_id,omitempty"`
+}
+
+type ReviewActionRecord struct {
+	ID               string    `json:"id"`
+	RunID            string    `json:"run_id"`
+	CycleID          *string   `json:"cycle_id,omitempty"`
+	ReviewerID       string    `json:"reviewer_id"`
+	ReviewerType     string    `json:"reviewer_type"`
+	ActionType       string    `json:"action_type"`
+	PriorStatus      string    `json:"prior_status"`
+	NewStatus        string    `json:"new_status"`
+	Rationale        string    `json:"rationale"`
+	PolicyDecisionID *string   `json:"policy_decision_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+type GovernanceAuditEventInput struct {
+	ActorID          string          `json:"actor_id"`
+	ActorType        string          `json:"actor_type"`
+	ActionType       string          `json:"action_type"`
+	TargetRunID      *string         `json:"target_run_id,omitempty"`
+	TargetCycleID    *string         `json:"target_cycle_id,omitempty"`
+	TargetArtifactID *string         `json:"target_artifact_id,omitempty"`
+	PolicyDecisionID *string         `json:"policy_decision_id,omitempty"`
+	PayloadSummary   json.RawMessage `json:"payload_summary"`
+}
+
+type GovernanceAuditEvent struct {
+	ID                string          `json:"id"`
+	PreviousEventHash string          `json:"previous_event_hash"`
+	CurrentEventHash  string          `json:"current_event_hash"`
+	ActorID           string          `json:"actor_id"`
+	ActorType         string          `json:"actor_type"`
+	ActionType        string          `json:"action_type"`
+	TargetRunID       *string         `json:"target_run_id,omitempty"`
+	TargetCycleID     *string         `json:"target_cycle_id,omitempty"`
+	TargetArtifactID  *string         `json:"target_artifact_id,omitempty"`
+	PolicyDecisionID  *string         `json:"policy_decision_id,omitempty"`
+	PayloadSummary    json.RawMessage `json:"payload_summary"`
+	CreatedAt         time.Time       `json:"created_at"`
 }
 
 type DependencyStatus struct {
@@ -335,6 +457,10 @@ type Repository interface {
 
 	RegisterModelProfile(context.Context, store.DBTX, RegisterModelProfileInput, string) (ModelProfile, error)
 	GetModelProfile(context.Context, store.DBTX, string) (ModelProfile, error)
+
+	RecordPolicyDecision(context.Context, store.DBTX, PolicyDecisionInput) (PolicyDecision, error)
+	RecordReviewAction(context.Context, store.DBTX, string, ReviewActionInput, string, string) (ReviewActionRecord, error)
+	AppendGovernanceAuditEvent(context.Context, store.DBTX, GovernanceAuditEventInput) (GovernanceAuditEvent, error)
 }
 
 type Service interface {
@@ -357,6 +483,7 @@ type Service interface {
 	GetModelProfile(context.Context, string) (ModelProfile, error)
 	StartRun(context.Context, string, ExecuteRunInput, string) (ExecuteRunResult, error)
 	ExecuteCycleRun(context.Context, string, string, ExecuteRunInput, string) (ExecuteRunResult, error)
+	ReviewAction(context.Context, string, ReviewActionInput, string) (Run, error)
 
 	DependencyHealth(context.Context) (DependencyHealth, error)
 }

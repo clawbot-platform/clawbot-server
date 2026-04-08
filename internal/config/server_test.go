@@ -25,6 +25,15 @@ func TestLoadServerFromEnvDefaults(t *testing.T) {
 	if cfg.InferenceBaseURL != "http://ai-precision:11434" {
 		t.Fatalf("unexpected InferenceBaseURL: %s", cfg.InferenceBaseURL)
 	}
+	if cfg.InferenceTimeout.String() != "2m0s" {
+		t.Fatalf("unexpected InferenceTimeout: %s", cfg.InferenceTimeout)
+	}
+	if cfg.GuardrailTimeout.String() != "30s" {
+		t.Fatalf("unexpected GuardrailTimeout: %s", cfg.GuardrailTimeout)
+	}
+	if cfg.HelperTimeout.String() != "30s" {
+		t.Fatalf("unexpected HelperTimeout: %s", cfg.HelperTimeout)
+	}
 	if !cfg.EnableCompactDualPayload {
 		t.Fatal("expected EnableCompactDualPayload to default to true")
 	}

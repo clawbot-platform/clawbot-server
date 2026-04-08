@@ -20,6 +20,9 @@ type DependencyConfig struct {
 	HelperTimeout                time.Duration
 	DisableLocalOllamaGuardrails bool
 	EnableCompactDualPayload     bool
+	PolicyBundleID               string
+	PolicyBundleVersion          string
+	Environment                  string
 }
 
 type Manager struct {
@@ -59,6 +62,15 @@ func NewManagerWithIntegrations(
 	if deps.InferenceBaseURL == "" {
 		deps.InferenceBaseURL = inferenceClient.BaseURL()
 	}
+	if strings.TrimSpace(deps.PolicyBundleID) == "" {
+		deps.PolicyBundleID = "ach-governance"
+	}
+	if strings.TrimSpace(deps.PolicyBundleVersion) == "" {
+		deps.PolicyBundleVersion = "2026.1"
+	}
+	if strings.TrimSpace(deps.Environment) == "" {
+		deps.Environment = "unknown"
+	}
 
 	return &Manager{
 		repo:      repo,
@@ -93,21 +105,170 @@ func (m *Manager) ExecuteCycleRun(ctx context.Context, runID string, cycleID str
 	return m.executeRun(ctx, runID, &cycleID, input, actor)
 }
 
+func (m *Manager) ReviewAction(ctx context.Context, runID string, input ReviewActionInput, actor string) (Run, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return Run{}, fmt.Errorf("run id is required")
+	}
+	normalizeReviewActionInput(&input, actor)
+	if err := validateReviewActionInput(input); err != nil {
+		return Run{}, err
+	}
+
+	runForPolicy, err := m.repo.Get(ctx, m.db, runID)
+	if err != nil {
+		return Run{}, err
+	}
+	var cycleForPolicy *Cycle
+	if input.CycleID != nil && strings.TrimSpace(*input.CycleID) != "" {
+		cycle, cycleErr := m.repo.GetCycle(ctx, m.db, runID, strings.TrimSpace(*input.CycleID))
+		if cycleErr != nil {
+			return Run{}, cycleErr
+		}
+		cycleForPolicy = &cycle
+	}
+
+	policyDecision, err := m.evaluateAndRecordPolicy(ctx, "run.review."+input.Action, actor, &runForPolicy, cycleForPolicy, nil, nil, nil, nil)
+	if err != nil {
+		return Run{}, err
+	}
+	if !policyDecision.Allow {
+		return Run{}, policyDeniedError(policyDecision)
+	}
+
+	var updated Run
+	err = m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
+		run, err := m.repo.Get(ctx, q, runID)
+		if err != nil {
+			return err
+		}
+		priorStatus := run.Status
+		newStatus, err := mapReviewActionToRunStatus(input.Action)
+		if err != nil {
+			return err
+		}
+
+		run.Status = newStatus
+		run.ReviewMetadataJSON = mergeJSONObjects(run.ReviewMetadataJSON, map[string]any{
+			"review_action": map[string]any{
+				"action":        input.Action,
+				"reviewer_id":   input.ReviewerID,
+				"reviewer_type": input.ReviewerType,
+				"rationale":     input.Rationale,
+				"at":            time.Now().UTC().Format(time.RFC3339Nano),
+				"prior_status":  priorStatus,
+				"new_status":    newStatus,
+			},
+		})
+
+		updated, err = m.repo.Update(ctx, q, run)
+		if err != nil {
+			return err
+		}
+
+		reviewInput := input
+		if reviewInput.PolicyDecisionID == nil {
+			reviewInput.PolicyDecisionID = &policyDecision.ID
+		}
+		if _, err := m.repo.RecordReviewAction(ctx, q, runID, reviewInput, priorStatus, newStatus); err != nil {
+			return err
+		}
+
+		if input.CycleID != nil && strings.TrimSpace(*input.CycleID) != "" {
+			cycle, err := m.repo.GetCycle(ctx, q, runID, strings.TrimSpace(*input.CycleID))
+			if err != nil {
+				return err
+			}
+			nextCycleStatus, err := mapReviewActionToCycleStatus(input.Action)
+			if err != nil {
+				return err
+			}
+			cycle.Status = nextCycleStatus
+			if _, err := m.repo.UpdateCycle(ctx, q, cycle); err != nil {
+				return err
+			}
+		}
+
+		if err := recordAudit(ctx, m.audits, q, "run", "run.review.action", actor, updated.ID, map[string]any{
+			"action":       input.Action,
+			"prior_status": priorStatus,
+			"new_status":   newStatus,
+			"reviewer_id":  input.ReviewerID,
+		}); err != nil {
+			return err
+		}
+		if _, err := m.repo.AppendGovernanceAuditEvent(ctx, q, GovernanceAuditEventInput{
+			ActorID:          input.ReviewerID,
+			ActorType:        input.ReviewerType,
+			ActionType:       "run.review." + input.Action,
+			TargetRunID:      &updated.ID,
+			TargetCycleID:    input.CycleID,
+			PolicyDecisionID: &policyDecision.ID,
+			PayloadSummary: mustJSON(map[string]any{
+				"prior_status": priorStatus,
+				"new_status":   newStatus,
+				"rationale":    input.Rationale,
+			}, map[string]any{}),
+		}); err != nil {
+			return err
+		}
+
+		return m.scheduler.RecordRunIntent(ctx, q, scheduler.Signal{
+			RunID:   updated.ID,
+			RunName: updated.Name,
+			Status:  updated.Status,
+			Actor:   actor,
+			Reason:  "run.review.action",
+		})
+	})
+	if err != nil {
+		return Run{}, err
+	}
+
+	return updated, nil
+}
+
 func (m *Manager) Create(ctx context.Context, input CreateInput, actor string) (Run, error) {
 	normalizeCreateInput(&input, actor)
 	if err := validateCreateInput(input); err != nil {
 		return Run{}, err
 	}
 
+	policyDecision, err := m.evaluateAndRecordPolicy(ctx, "run.create", actor, nil, nil, &input, nil, nil, nil)
+	if err != nil {
+		return Run{}, err
+	}
+	if !policyDecision.Allow {
+		return Run{}, policyDeniedError(policyDecision)
+	}
+	input.ReviewMetadataJSON = mergeJSONObjects(input.ReviewMetadataJSON, map[string]any{
+		"last_policy_decision_id": policyDecision.ID,
+		"execution_ring":          input.ExecutionRing,
+	})
+
 	var created Run
-	err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
+	err = m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
 		var err error
 		created, err = m.repo.Create(ctx, q, input)
 		if err != nil {
 			return err
 		}
+		runID := created.ID
 
 		if err := recordAudit(ctx, m.audits, q, "run", "run.created", actor, created.ID, created); err != nil {
+			return err
+		}
+		if _, err := m.repo.AppendGovernanceAuditEvent(ctx, q, GovernanceAuditEventInput{
+			ActorID:          actor,
+			ActorType:        "user",
+			ActionType:       "run.create",
+			TargetRunID:      &runID,
+			PolicyDecisionID: &policyDecision.ID,
+			PayloadSummary: mustJSON(map[string]any{
+				"execution_mode": created.ExecutionMode,
+				"execution_ring": created.ExecutionRing,
+			}, map[string]any{}),
+		}); err != nil {
 			return err
 		}
 
@@ -174,8 +335,20 @@ func (m *Manager) CreateCycle(ctx context.Context, runID string, input CreateCyc
 		return Cycle{}, err
 	}
 
+	runForPolicy, err := m.repo.Get(ctx, m.db, runID)
+	if err != nil {
+		return Cycle{}, err
+	}
+	policyDecision, err := m.evaluateAndRecordPolicy(ctx, "run.cycle.create", actor, &runForPolicy, nil, nil, &input, nil, nil)
+	if err != nil {
+		return Cycle{}, err
+	}
+	if !policyDecision.Allow {
+		return Cycle{}, policyDeniedError(policyDecision)
+	}
+
 	var created Cycle
-	err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
+	err = m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
 		run, err := m.repo.Get(ctx, q, runID)
 		if err != nil {
 			return err
@@ -191,6 +364,21 @@ func (m *Manager) CreateCycle(ctx context.Context, runID string, input CreateCyc
 		}
 
 		if err := recordAudit(ctx, m.audits, q, "cycle", "run.cycle.created", actor, created.ID, created); err != nil {
+			return err
+		}
+		cycleID := created.ID
+		if _, err := m.repo.AppendGovernanceAuditEvent(ctx, q, GovernanceAuditEventInput{
+			ActorID:          actor,
+			ActorType:        "user",
+			ActionType:       "run.cycle.create",
+			TargetRunID:      &run.ID,
+			TargetCycleID:    &cycleID,
+			PolicyDecisionID: &policyDecision.ID,
+			PayloadSummary: mustJSON(map[string]any{
+				"cycle_key":      created.CycleKey,
+				"execution_ring": created.ExecutionRing,
+			}, map[string]any{}),
+		}); err != nil {
 			return err
 		}
 
@@ -288,9 +476,20 @@ func (m *Manager) AttachArtifact(ctx context.Context, runID string, input Attach
 	if err := normalizeAttachArtifactInput(&input); err != nil {
 		return Artifact{}, err
 	}
+	runForPolicy, err := m.repo.Get(ctx, m.db, runID)
+	if err != nil {
+		return Artifact{}, err
+	}
+	policyDecision, err := m.evaluateAndRecordPolicy(ctx, "run.artifact.attach", actor, &runForPolicy, nil, nil, nil, &input, nil)
+	if err != nil {
+		return Artifact{}, err
+	}
+	if !policyDecision.Allow {
+		return Artifact{}, policyDeniedError(policyDecision)
+	}
 
 	var artifact Artifact
-	err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
+	err = m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
 		run, err := m.repo.Get(ctx, q, runID)
 		if err != nil {
 			return err
@@ -309,6 +508,21 @@ func (m *Manager) AttachArtifact(ctx context.Context, runID string, input Attach
 
 		run.ArtifactBundleRefs = appendUnique(run.ArtifactBundleRefs, artifact.URI)
 		if _, err := m.repo.Update(ctx, q, run); err != nil {
+			return err
+		}
+		artifactID := artifact.ID
+		if _, err := m.repo.AppendGovernanceAuditEvent(ctx, q, GovernanceAuditEventInput{
+			ActorID:          actor,
+			ActorType:        "user",
+			ActionType:       "run.artifact.attach",
+			TargetRunID:      &run.ID,
+			TargetArtifactID: &artifactID,
+			PolicyDecisionID: &policyDecision.ID,
+			PayloadSummary: mustJSON(map[string]any{
+				"artifact_type": artifact.ArtifactType,
+				"content_type":  artifact.ContentType,
+			}, map[string]any{}),
+		}); err != nil {
 			return err
 		}
 
@@ -355,6 +569,19 @@ func (m *Manager) UpsertComparison(ctx context.Context, runID string, input Upse
 		var err error
 		comparison, err = m.repo.UpsertComparison(ctx, q, runID, input)
 		if err != nil {
+			return err
+		}
+		if _, err := m.repo.AppendGovernanceAuditEvent(ctx, q, GovernanceAuditEventInput{
+			ActorID:     actor,
+			ActorType:   "user",
+			ActionType:  "run.comparison.upsert",
+			TargetRunID: &runID,
+			PayloadSummary: mustJSON(map[string]any{
+				"review_status": comparison.ReviewStatus,
+				"guardrail_present": guardrailStatusFromSummary(comparison.GuardrailSummary) == string(GuardrailStatusPassed) ||
+					guardrailStatusFromSummary(comparison.GuardrailSummary) == string(GuardrailStatusFlagged),
+			}, map[string]any{}),
+		}); err != nil {
 			return err
 		}
 
@@ -440,8 +667,35 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 	}
 	normalizeExecuteRunInput(&input)
 
+	runForPolicy, err := m.repo.Get(ctx, m.db, runID)
+	if err != nil {
+		return ExecuteRunResult{}, err
+	}
+	cycleForPolicy, _, err := resolveExecutionCycle(ctx, m.repo, m.db, runForPolicy, forcedCycleID, input.CycleID)
+	if err != nil {
+		return ExecuteRunResult{}, err
+	}
+
+	var profileForPolicy *ModelProfile
+	if runForPolicy.ExecutionMode == string(ExecutionModeLLM) || runForPolicy.ExecutionMode == string(ExecutionModeDual) {
+		profile, err := m.repo.GetModelProfile(ctx, m.db, runForPolicy.ModelProfile)
+		if err != nil {
+			return ExecuteRunResult{}, err
+		}
+		profileForPolicy = &profile
+	}
+
+	policyDecision, err := m.evaluateAndRecordPolicy(ctx, "run.execute", actor, &runForPolicy, cycleForPolicy, nil, nil, nil, profileForPolicy)
+	if err != nil {
+		return ExecuteRunResult{}, err
+	}
+	if !policyDecision.Allow {
+		_ = m.markExecutionPolicyFailure(ctx, runID, cycleForPolicy)
+		return ExecuteRunResult{}, policyDeniedError(policyDecision)
+	}
+
 	var result ExecuteRunResult
-	err := m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
+	err = m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
 		run, err := m.repo.Get(ctx, q, runID)
 		if err != nil {
 			return err
@@ -490,6 +744,7 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 		deterministicSummary := json.RawMessage(`{}`)
 		llmSummary := json.RawMessage(`{}`)
 		guardrailSummary := json.RawMessage(`{}`)
+		effectiveGuardrailStatus := string(GuardrailStatusDisabled)
 		createdArtifacts := make([]Artifact, 0, 4)
 		createdArtifactURIs := make([]string, 0, 4)
 		var comparison *Comparison
@@ -506,16 +761,23 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 		}
 
 		if run.ExecutionMode == string(ExecutionModeLLM) || run.ExecutionMode == string(ExecutionModeDual) {
-			profile, err := m.repo.GetModelProfile(ctx, q, run.ModelProfile)
-			if err != nil {
-				return fmt.Errorf("get model profile %q: %w", run.ModelProfile, err)
+			profile := profileForPolicy
+			if profile == nil {
+				loaded, loadErr := m.repo.GetModelProfile(ctx, q, run.ModelProfile)
+				if loadErr != nil {
+					return fmt.Errorf("get model profile %q: %w", run.ModelProfile, loadErr)
+				}
+				profile = &loaded
 			}
 
 			inferencePayload := buildInferencePayload(run, cycle, memoryContext, deterministicSummary, input, m.deps.EnableCompactDualPayload)
-			phaseTimeouts := deriveInferencePhaseTimeouts(profile, m.deps)
+			phaseTimeouts := deriveInferencePhaseTimeouts(*profile, m.deps)
 			enableGuardrails := profile.EnableGuardrails
 			if m.deps.DisableLocalOllamaGuardrails && isLocalOllamaProvider(profile.Provider) {
 				enableGuardrails = false
+			}
+			if !enableGuardrails {
+				effectiveGuardrailStatus = string(GuardrailStatusDisabled)
 			}
 
 			inferenceResponse, err := m.inference.Execute(ctx, InferenceRequest{
@@ -547,6 +809,8 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 			if string(guardrailSummary) == "{}" {
 				guardrailSummary = defaultRaw(inferenceResponse.Guardrail, json.RawMessage(`{}`))
 			}
+			effectiveGuardrailStatus = resolveGuardrailStatus(enableGuardrails, inferenceResponse.GuardrailStatus, guardrailSummary)
+			guardrailSummary = ensureGuardrailSummary(guardrailSummary, effectiveGuardrailStatus, inferenceResponse.GuardrailText, inferenceResponse.GuardrailScore)
 
 			llmArtifact, err := createExecutionArtifact(ctx, m.repo, q, run, cycleID, "llm_output", llmSummary, "application/json", "v1")
 			if err != nil {
@@ -594,6 +858,11 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 		if snapshotRef != "" {
 			run.MemorySnapshotRefs = appendUnique(run.MemorySnapshotRefs, snapshotRef)
 		}
+		run.GuardrailStatus = effectiveGuardrailStatus
+		run.ReviewMetadataJSON = mergeJSONObjects(run.ReviewMetadataJSON, map[string]any{
+			"last_policy_decision_id": policyDecision.ID,
+			"guardrail_status":        effectiveGuardrailStatus,
+		})
 
 		finishedAt := time.Now().UTC()
 		run.FinishedAt = &finishedAt
@@ -601,7 +870,11 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 		if run.ExecutionMode == string(ExecutionModeDeterministic) {
 			run.Status = string(RunStatusCompleted)
 		} else {
-			run.Status = string(RunStatusReviewPending)
+			if effectiveGuardrailStatus == string(GuardrailStatusTimeout) || effectiveGuardrailStatus == string(GuardrailStatusUnavailable) {
+				run.Status = string(RunStatusGuardrailDeferred)
+			} else {
+				run.Status = string(RunStatusReviewPending)
+			}
 		}
 
 		updatedRun, err := m.repo.Update(ctx, q, run)
@@ -611,10 +884,15 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 
 		if cycle != nil {
 			cycle.FinishedAt = &finishedAt
+			cycle.GuardrailStatus = effectiveGuardrailStatus
 			if run.ExecutionMode == string(ExecutionModeDeterministic) {
 				cycle.Status = string(CycleStatusCompleted)
 			} else {
-				cycle.Status = string(CycleStatusReviewPending)
+				if effectiveGuardrailStatus == string(GuardrailStatusTimeout) || effectiveGuardrailStatus == string(GuardrailStatusUnavailable) {
+					cycle.Status = string(CycleStatusGuardrailDeferred)
+				} else {
+					cycle.Status = string(CycleStatusReviewPending)
+				}
 			}
 			if snapshotRef != "" {
 				cycle.MemorySnapshotRef = snapshotRef
@@ -629,12 +907,48 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 		}
 
 		if err := recordAudit(ctx, m.audits, q, "run", "run.executed", actor, updatedRun.ID, map[string]any{
-			"run_id":         updatedRun.ID,
-			"run_type":       updatedRun.RunType,
-			"execution_mode": updatedRun.ExecutionMode,
-			"artifact_count": len(createdArtifacts),
+			"run_id":           updatedRun.ID,
+			"run_type":         updatedRun.RunType,
+			"execution_mode":   updatedRun.ExecutionMode,
+			"guardrail_status": effectiveGuardrailStatus,
+			"artifact_count":   len(createdArtifacts),
 		}); err != nil {
 			return err
+		}
+		if _, err := m.repo.AppendGovernanceAuditEvent(ctx, q, GovernanceAuditEventInput{
+			ActorID:          actor,
+			ActorType:        "user",
+			ActionType:       "run.execute",
+			TargetRunID:      &updatedRun.ID,
+			TargetCycleID:    cycleID,
+			PolicyDecisionID: &policyDecision.ID,
+			PayloadSummary: mustJSON(map[string]any{
+				"execution_mode":   updatedRun.ExecutionMode,
+				"execution_ring":   updatedRun.ExecutionRing,
+				"guardrail_status": effectiveGuardrailStatus,
+				"artifact_count":   len(createdArtifacts),
+			}, map[string]any{}),
+		}); err != nil {
+			return err
+		}
+		if effectiveGuardrailStatus == string(GuardrailStatusTimeout) || effectiveGuardrailStatus == string(GuardrailStatusUnavailable) || effectiveGuardrailStatus == string(GuardrailStatusDisabled) {
+			guardrailAction := "guardrail.deferred"
+			if effectiveGuardrailStatus == string(GuardrailStatusDisabled) {
+				guardrailAction = "guardrail.disabled"
+			}
+			if _, err := m.repo.AppendGovernanceAuditEvent(ctx, q, GovernanceAuditEventInput{
+				ActorID:          actor,
+				ActorType:        "user",
+				ActionType:       guardrailAction,
+				TargetRunID:      &updatedRun.ID,
+				TargetCycleID:    cycleID,
+				PolicyDecisionID: &policyDecision.ID,
+				PayloadSummary: mustJSON(map[string]any{
+					"guardrail_status": effectiveGuardrailStatus,
+				}, map[string]any{}),
+			}); err != nil {
+				return err
+			}
 		}
 
 		if err := m.scheduler.RecordRunIntent(ctx, q, scheduler.Signal{
@@ -657,6 +971,7 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 			DeterministicSummary: deterministicSummary,
 			LLMSummary:           llmSummary,
 			GuardrailSummary:     guardrailSummary,
+			GuardrailStatus:      effectiveGuardrailStatus,
 			Artifacts:            createdArtifacts,
 			Comparison:           comparison,
 		}
@@ -688,6 +1003,12 @@ func mergeRun(existing Run, input UpdateInput) (Run, error) {
 	}
 	if input.ExecutionMode != nil {
 		existing.ExecutionMode = strings.TrimSpace(*input.ExecutionMode)
+	}
+	if input.ExecutionRing != nil {
+		existing.ExecutionRing = strings.TrimSpace(*input.ExecutionRing)
+	}
+	if input.GuardrailStatus != nil {
+		existing.GuardrailStatus = strings.TrimSpace(*input.GuardrailStatus)
 	}
 	if input.Repo != nil {
 		existing.Repo = strings.TrimSpace(*input.Repo)
@@ -757,8 +1078,20 @@ func mergeRun(existing Run, input UpdateInput) (Run, error) {
 	if !isValidExecutionMode(existing.ExecutionMode) {
 		return Run{}, fmt.Errorf("invalid execution_mode %q", existing.ExecutionMode)
 	}
+	if !isValidExecutionRing(existing.ExecutionRing) {
+		return Run{}, fmt.Errorf("invalid execution_ring %q", existing.ExecutionRing)
+	}
+	if !isValidGuardrailStatus(existing.GuardrailStatus) {
+		return Run{}, fmt.Errorf("invalid guardrail_status %q", existing.GuardrailStatus)
+	}
 	if existing.ModelProfile == "" {
 		existing.ModelProfile = "ach-default"
+	}
+	if existing.ExecutionRing == "" {
+		existing.ExecutionRing = defaultExecutionRingForMode(existing.ExecutionMode)
+	}
+	if existing.GuardrailStatus == "" {
+		existing.GuardrailStatus = string(GuardrailStatusDisabled)
 	}
 	if existing.GuardrailProfile == "" {
 		existing.GuardrailProfile = "ach-guardian-default"
@@ -782,6 +1115,12 @@ func mergeCycle(existing Cycle, input UpdateCycleInput) (Cycle, error) {
 	}
 	if input.DetectorPack != nil {
 		existing.DetectorPack = strings.TrimSpace(*input.DetectorPack)
+	}
+	if input.ExecutionRing != nil {
+		existing.ExecutionRing = strings.TrimSpace(*input.ExecutionRing)
+	}
+	if input.GuardrailStatus != nil {
+		existing.GuardrailStatus = strings.TrimSpace(*input.GuardrailStatus)
 	}
 	if input.SummaryRef != nil {
 		existing.SummaryRef = strings.TrimSpace(*input.SummaryRef)
@@ -808,6 +1147,12 @@ func mergeCycle(existing Cycle, input UpdateCycleInput) (Cycle, error) {
 	if input.MetadataJSON != nil {
 		existing.MetadataJSON = *input.MetadataJSON
 	}
+	if !isValidExecutionRing(existing.ExecutionRing) {
+		return Cycle{}, fmt.Errorf("invalid execution_ring %q", existing.ExecutionRing)
+	}
+	if !isValidGuardrailStatus(existing.GuardrailStatus) {
+		return Cycle{}, fmt.Errorf("invalid guardrail_status %q", existing.GuardrailStatus)
+	}
 	if len(existing.MetadataJSON) == 0 {
 		existing.MetadataJSON = json.RawMessage(`{}`)
 	}
@@ -820,6 +1165,8 @@ func normalizeCreateInput(input *CreateInput, actor string) {
 	input.ScenarioType = strings.TrimSpace(input.ScenarioType)
 	input.RunType = strings.TrimSpace(input.RunType)
 	input.ExecutionMode = strings.TrimSpace(input.ExecutionMode)
+	input.ExecutionRing = strings.TrimSpace(input.ExecutionRing)
+	input.GuardrailStatus = strings.TrimSpace(input.GuardrailStatus)
 	input.Repo = strings.TrimSpace(input.Repo)
 	input.Domain = strings.TrimSpace(input.Domain)
 	input.PromptPackVersion = strings.TrimSpace(input.PromptPackVersion)
@@ -841,6 +1188,12 @@ func normalizeCreateInput(input *CreateInput, actor string) {
 	}
 	if input.ExecutionMode == "" {
 		input.ExecutionMode = string(ExecutionModeDeterministic)
+	}
+	if input.ExecutionRing == "" {
+		input.ExecutionRing = defaultExecutionRingForMode(input.ExecutionMode)
+	}
+	if input.GuardrailStatus == "" {
+		input.GuardrailStatus = string(GuardrailStatusDisabled)
 	}
 	if input.ModelProfile == "" {
 		input.ModelProfile = "ach-default"
@@ -893,6 +1246,12 @@ func validateCreateInput(input CreateInput) error {
 	if !isValidExecutionMode(input.ExecutionMode) {
 		return fmt.Errorf("invalid execution_mode %q", input.ExecutionMode)
 	}
+	if !isValidExecutionRing(input.ExecutionRing) {
+		return fmt.Errorf("invalid execution_ring %q", input.ExecutionRing)
+	}
+	if !isValidGuardrailStatus(input.GuardrailStatus) {
+		return fmt.Errorf("invalid guardrail_status %q", input.GuardrailStatus)
+	}
 	if input.ModelProfile == "" {
 		return fmt.Errorf("model_profile is required")
 	}
@@ -907,10 +1266,14 @@ func normalizeCreateCycleInput(input *CreateCycleInput) error {
 	input.Focus = strings.TrimSpace(input.Focus)
 	input.Objective = strings.TrimSpace(input.Objective)
 	input.DetectorPack = strings.TrimSpace(input.DetectorPack)
+	input.ExecutionRing = strings.TrimSpace(input.ExecutionRing)
 	input.SummaryRef = strings.TrimSpace(input.SummaryRef)
 	input.CarryForwardSummaryRef = strings.TrimSpace(input.CarryForwardSummaryRef)
 	if input.Status == "" {
 		input.Status = string(CycleStatusPending)
+	}
+	if input.ExecutionRing == "" {
+		input.ExecutionRing = string(ExecutionRing1)
 	}
 	input.Status = strings.TrimSpace(input.Status)
 	if len(input.MetadataJSON) == 0 {
@@ -924,6 +1287,9 @@ func normalizeCreateCycleInput(input *CreateCycleInput) error {
 	}
 	if !isValidCycleStatus(input.Status) {
 		return fmt.Errorf("invalid cycle status %q", input.Status)
+	}
+	if !isValidExecutionRing(input.ExecutionRing) {
+		return fmt.Errorf("invalid execution_ring %q", input.ExecutionRing)
 	}
 	return nil
 }
@@ -1064,7 +1430,21 @@ func normalizeMemoryNamespace(ns MemoryNamespace, repo string, domain string, ru
 
 func isValidRunStatus(status string) bool {
 	switch status {
-	case string(RunStatusPending), string(RunStatusScheduled), string(RunStatusRunning), string(RunStatusReviewPending), string(RunStatusApproved), string(RunStatusRejected), string(RunStatusCompleted), string(RunStatusFailed), string(RunStatusCancelled), string(RunStatusClosed):
+	case string(RunStatusPending),
+		string(RunStatusScheduled),
+		string(RunStatusRunning),
+		string(RunStatusGuardrailDeferred),
+		string(RunStatusFailedRuntime),
+		string(RunStatusFailedPolicy),
+		string(RunStatusReviewPending),
+		string(RunStatusApproved),
+		string(RunStatusRejected),
+		string(RunStatusOverridden),
+		string(RunStatusDeferred),
+		string(RunStatusCompleted),
+		string(RunStatusFailed),
+		string(RunStatusCancelled),
+		string(RunStatusClosed):
 		return true
 	default:
 		return false
@@ -1091,7 +1471,41 @@ func isValidExecutionMode(mode string) bool {
 
 func isValidCycleStatus(status string) bool {
 	switch status {
-	case string(CycleStatusPending), string(CycleStatusRunning), string(CycleStatusReviewPending), string(CycleStatusApproved), string(CycleStatusRejected), string(CycleStatusCompleted), string(CycleStatusFailed), string(CycleStatusCancelled):
+	case string(CycleStatusPending),
+		string(CycleStatusRunning),
+		string(CycleStatusGuardrailDeferred),
+		string(CycleStatusFailedRuntime),
+		string(CycleStatusFailedPolicy),
+		string(CycleStatusReviewPending),
+		string(CycleStatusApproved),
+		string(CycleStatusRejected),
+		string(CycleStatusOverridden),
+		string(CycleStatusDeferred),
+		string(CycleStatusCompleted),
+		string(CycleStatusFailed),
+		string(CycleStatusCancelled):
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidExecutionRing(value string) bool {
+	switch value {
+	case string(ExecutionRing0), string(ExecutionRing1), string(ExecutionRing2), string(ExecutionRing3):
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidGuardrailStatus(value string) bool {
+	switch value {
+	case string(GuardrailStatusPassed),
+		string(GuardrailStatusFlagged),
+		string(GuardrailStatusTimeout),
+		string(GuardrailStatusUnavailable),
+		string(GuardrailStatusDisabled):
 		return true
 	default:
 		return false
@@ -1124,10 +1538,18 @@ func isValidCycleTransition(current string, next string) bool {
 			string(CycleStatusCancelled):     true,
 		},
 		string(CycleStatusReviewPending): {
-			string(CycleStatusApproved):  true,
-			string(CycleStatusRejected):  true,
-			string(CycleStatusRunning):   true,
-			string(CycleStatusCompleted): true,
+			string(CycleStatusApproved):   true,
+			string(CycleStatusRejected):   true,
+			string(CycleStatusRunning):    true,
+			string(CycleStatusDeferred):   true,
+			string(CycleStatusOverridden): true,
+			string(CycleStatusCompleted):  true,
+		},
+		string(CycleStatusGuardrailDeferred): {
+			string(CycleStatusReviewPending): true,
+			string(CycleStatusDeferred):      true,
+			string(CycleStatusCancelled):     true,
+			string(CycleStatusFailedRuntime): true,
 		},
 		string(CycleStatusApproved): {
 			string(CycleStatusCompleted): true,
@@ -1135,6 +1557,9 @@ func isValidCycleTransition(current string, next string) bool {
 		string(CycleStatusRejected): {
 			string(CycleStatusRunning):   true,
 			string(CycleStatusCancelled): true,
+		},
+		string(CycleStatusDeferred): {
+			string(CycleStatusRunning): true,
 		},
 	}
 	return allowed[current][next]
@@ -1266,6 +1691,7 @@ func buildDeterministicExecutionSummary(run Run, cycle *Cycle, memoryContext Mem
 		"run_id":                       run.ID,
 		"run_type":                     run.RunType,
 		"execution_mode":               run.ExecutionMode,
+		"execution_ring":               run.ExecutionRing,
 		"dataset_ref_count":            len(run.DatasetRefs),
 		"carry_forward_risk_count":     len(memoryContext.CarryForwardRisks),
 		"unresolved_gap_count":         len(memoryContext.UnresolvedGaps),
@@ -1454,13 +1880,75 @@ func createExecutionArtifact(
 }
 
 func buildComparisonDeltas(deterministicSummary json.RawMessage, llmSummary json.RawMessage, guardrailSummary json.RawMessage) json.RawMessage {
+	guardrailStatus := guardrailStatusFromSummary(guardrailSummary)
+	guardrailPresent := guardrailStatus == string(GuardrailStatusPassed) || guardrailStatus == string(GuardrailStatusFlagged)
 	payload := map[string]any{
 		"deterministic_present": string(deterministicSummary) != "{}",
 		"llm_present":           string(llmSummary) != "{}",
-		"guardrail_present":     string(guardrailSummary) != "{}",
+		"guardrail_present":     guardrailPresent,
+		"guardrail_status":      guardrailStatus,
 	}
 	body, _ := json.Marshal(payload)
 	return body
+}
+
+func ensureGuardrailSummary(summary json.RawMessage, status string, text string, score *float64) json.RawMessage {
+	if status == "" {
+		status = string(GuardrailStatusDisabled)
+	}
+	payload := map[string]any{}
+	if len(summary) != 0 && string(summary) != "{}" {
+		_ = json.Unmarshal(summary, &payload)
+	}
+	payload["status"] = status
+	if strings.TrimSpace(text) != "" {
+		payload["note"] = strings.TrimSpace(text)
+	}
+	if score != nil {
+		payload["score"] = *score
+	}
+	body, _ := json.Marshal(payload)
+	return body
+}
+
+func guardrailStatusFromSummary(summary json.RawMessage) string {
+	if len(summary) == 0 || string(summary) == "{}" {
+		return string(GuardrailStatusDisabled)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(summary, &payload); err != nil {
+		return string(GuardrailStatusFlagged)
+	}
+	value, _ := payload["status"].(string)
+	value = strings.TrimSpace(strings.ToLower(value))
+	switch value {
+	case string(GuardrailStatusPassed),
+		string(GuardrailStatusFlagged),
+		string(GuardrailStatusTimeout),
+		string(GuardrailStatusUnavailable),
+		string(GuardrailStatusDisabled):
+		return value
+	default:
+		return string(GuardrailStatusFlagged)
+	}
+}
+
+func resolveGuardrailStatus(enabled bool, returned string, summary json.RawMessage) string {
+	if !enabled {
+		return string(GuardrailStatusDisabled)
+	}
+	returned = strings.TrimSpace(strings.ToLower(returned))
+	switch returned {
+	case string(GuardrailStatusPassed),
+		string(GuardrailStatusFlagged),
+		string(GuardrailStatusTimeout),
+		string(GuardrailStatusUnavailable):
+		return returned
+	}
+	if len(summary) == 0 || string(summary) == "{}" {
+		return string(GuardrailStatusUnavailable)
+	}
+	return guardrailStatusFromSummary(summary)
 }
 
 func choosePrompt(candidate string, run Run, cycle *Cycle) string {
@@ -1478,6 +1966,363 @@ func chooseSystemPrompt(candidate string, run Run) string {
 		return candidate
 	}
 	return fmt.Sprintf("You are a compliance-oriented assistant for %s. Return JSON only.", run.Domain)
+}
+
+func defaultExecutionRingForMode(mode string) string {
+	switch mode {
+	case string(ExecutionModeLLM), string(ExecutionModeDual):
+		return string(ExecutionRing2)
+	default:
+		return string(ExecutionRing1)
+	}
+}
+
+func normalizeReviewActionInput(input *ReviewActionInput, actor string) {
+	input.Action = strings.TrimSpace(strings.ToLower(input.Action))
+	input.ReviewerID = strings.TrimSpace(input.ReviewerID)
+	input.ReviewerType = strings.TrimSpace(strings.ToLower(input.ReviewerType))
+	input.Rationale = strings.TrimSpace(input.Rationale)
+	if input.ReviewerID == "" {
+		input.ReviewerID = strings.TrimSpace(actor)
+	}
+	if input.ReviewerType == "" {
+		input.ReviewerType = "human"
+	}
+	if input.CycleID != nil {
+		cycleID := strings.TrimSpace(*input.CycleID)
+		input.CycleID = &cycleID
+	}
+	if input.PolicyDecisionID != nil {
+		policyID := strings.TrimSpace(*input.PolicyDecisionID)
+		input.PolicyDecisionID = &policyID
+	}
+}
+
+func validateReviewActionInput(input ReviewActionInput) error {
+	if input.ReviewerID == "" {
+		return fmt.Errorf("reviewer_id is required")
+	}
+	switch input.Action {
+	case "approve", "reject", "override", "defer":
+		return nil
+	default:
+		return fmt.Errorf("unsupported review action %q", input.Action)
+	}
+}
+
+func mapReviewActionToRunStatus(action string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(action)) {
+	case "approve":
+		return string(RunStatusApproved), nil
+	case "reject":
+		return string(RunStatusRejected), nil
+	case "override":
+		return string(RunStatusOverridden), nil
+	case "defer":
+		return string(RunStatusDeferred), nil
+	default:
+		return "", fmt.Errorf("unsupported review action %q", action)
+	}
+}
+
+func mapReviewActionToCycleStatus(action string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(action)) {
+	case "approve":
+		return string(CycleStatusApproved), nil
+	case "reject":
+		return string(CycleStatusRejected), nil
+	case "override":
+		return string(CycleStatusOverridden), nil
+	case "defer":
+		return string(CycleStatusDeferred), nil
+	default:
+		return "", fmt.Errorf("unsupported review action %q", action)
+	}
+}
+
+func (m *Manager) evaluateAndRecordPolicy(
+	ctx context.Context,
+	action string,
+	actor string,
+	run *Run,
+	cycle *Cycle,
+	createRunInput *CreateInput,
+	createCycleInput *CreateCycleInput,
+	attachArtifactInput *AttachArtifactInput,
+	profile *ModelProfile,
+) (PolicyDecision, error) {
+	input := buildPolicyInput(action, actor, m.deps.Environment, run, cycle, createRunInput, createCycleInput, attachArtifactInput, profile)
+	outcome := evaluatePolicyOutcome(input)
+	decision, err := m.repo.RecordPolicyDecision(ctx, m.db, PolicyDecisionInput{
+		ActionType:          action,
+		TargetRunID:         optionalRunID(run),
+		TargetCycleID:       optionalCycleID(cycle),
+		ActorID:             actor,
+		ActorType:           "user",
+		PolicyInput:         mustJSON(input, map[string]any{}),
+		Allow:               outcome.Allow,
+		PolicyBundleID:      m.deps.PolicyBundleID,
+		PolicyBundleVersion: m.deps.PolicyBundleVersion,
+		ReasonCode:          outcome.ReasonCode,
+		ConditionsApplied:   outcome.ConditionsApplied,
+		FallbackMode:        outcome.FallbackMode,
+	})
+	if err != nil {
+		return PolicyDecision{}, err
+	}
+
+	if _, err := m.repo.AppendGovernanceAuditEvent(ctx, m.db, GovernanceAuditEventInput{
+		ActorID:          actor,
+		ActorType:        "user",
+		ActionType:       "policy." + ternary(outcome.Allow, "allow", "deny"),
+		TargetRunID:      decision.TargetRunID,
+		TargetCycleID:    decision.TargetCycleID,
+		PolicyDecisionID: &decision.ID,
+		PayloadSummary: mustJSON(map[string]any{
+			"action":             action,
+			"allow":              outcome.Allow,
+			"reason_code":        outcome.ReasonCode,
+			"conditions_applied": outcome.ConditionsApplied,
+			"fallback_mode":      outcome.FallbackMode,
+		}, map[string]any{}),
+	}); err != nil {
+		return PolicyDecision{}, err
+	}
+
+	return decision, nil
+}
+
+func buildPolicyInput(
+	action string,
+	actor string,
+	environment string,
+	run *Run,
+	cycle *Cycle,
+	createRunInput *CreateInput,
+	createCycleInput *CreateCycleInput,
+	attachArtifactInput *AttachArtifactInput,
+	profile *ModelProfile,
+) map[string]any {
+	payload := map[string]any{
+		"action":      action,
+		"actor":       actor,
+		"environment": environment,
+	}
+
+	if run != nil {
+		payload["run_type"] = run.RunType
+		payload["execution_mode"] = run.ExecutionMode
+		payload["execution_ring"] = run.ExecutionRing
+		payload["repo"] = run.Repo
+		payload["run_namespace"] = run.MemoryNamespace.RunNamespace
+		payload["model_profile"] = run.ModelProfile
+		payload["prompt_pack_version"] = run.PromptPackVersion
+		payload["rule_pack_version"] = run.RulePackVersion
+	}
+	if cycle != nil {
+		payload["cycle_id"] = cycle.ID
+		payload["cycle_key"] = cycle.CycleKey
+		payload["cycle_execution_ring"] = cycle.ExecutionRing
+	}
+	if createRunInput != nil {
+		payload["run_type"] = createRunInput.RunType
+		payload["execution_mode"] = createRunInput.ExecutionMode
+		payload["execution_ring"] = createRunInput.ExecutionRing
+		payload["repo"] = createRunInput.Repo
+		payload["run_namespace"] = createRunInput.MemoryNamespace.RunNamespace
+		payload["model_profile"] = createRunInput.ModelProfile
+		payload["prompt_pack_version"] = createRunInput.PromptPackVersion
+		payload["rule_pack_version"] = createRunInput.RulePackVersion
+	}
+	if createCycleInput != nil {
+		payload["cycle_key"] = createCycleInput.CycleKey
+		payload["cycle_execution_ring"] = createCycleInput.ExecutionRing
+	}
+	if attachArtifactInput != nil {
+		payload["artifact_uri"] = attachArtifactInput.URI
+	}
+	if profile != nil {
+		payload["guardrails_enabled"] = profile.EnableGuardrails
+		payload["outbound_targets"] = []string{profile.BaseURL}
+		payload["provider"] = profile.Provider
+	}
+
+	return payload
+}
+
+type policyOutcome struct {
+	Allow             bool
+	ReasonCode        string
+	ConditionsApplied []string
+	FallbackMode      string
+}
+
+func evaluatePolicyOutcome(input map[string]any) policyOutcome {
+	ring := executionRingFromAny(input["execution_ring"])
+	mode := strings.TrimSpace(fmt.Sprintf("%v", input["execution_mode"]))
+	action := strings.TrimSpace(fmt.Sprintf("%v", input["action"]))
+	out := policyOutcome{
+		Allow:             true,
+		ReasonCode:        "policy_allow",
+		ConditionsApplied: []string{},
+		FallbackMode:      "",
+	}
+
+	if !isValidExecutionRing(ring) {
+		return policyOutcome{
+			Allow:             false,
+			ReasonCode:        "invalid_execution_ring",
+			ConditionsApplied: []string{"valid_execution_ring_required"},
+			FallbackMode:      "deny",
+		}
+	}
+
+	required := minimumRingForMode(mode)
+	if ringRank(ring) < ringRank(required) {
+		return policyOutcome{
+			Allow:             false,
+			ReasonCode:        "execution_ring_too_low",
+			ConditionsApplied: []string{fmt.Sprintf("minimum_ring_%s_required", required)},
+			FallbackMode:      "deny",
+		}
+	}
+	out.ConditionsApplied = append(out.ConditionsApplied, fmt.Sprintf("minimum_ring_%s_satisfied", required))
+
+	if targets, ok := input["outbound_targets"].([]string); ok {
+		for _, target := range targets {
+			if isExternalTarget(target) && ringRank(ring) < ringRank(string(ExecutionRing3)) {
+				return policyOutcome{
+					Allow:             false,
+					ReasonCode:        "external_target_requires_ring_3",
+					ConditionsApplied: []string{"ring_3_required_for_external_actions"},
+					FallbackMode:      "deny",
+				}
+			}
+		}
+	}
+
+	if uri := strings.TrimSpace(fmt.Sprintf("%v", input["artifact_uri"])); uri != "" {
+		if (strings.HasPrefix(uri, "http://") || strings.HasPrefix(uri, "https://")) && ringRank(ring) < ringRank(string(ExecutionRing3)) {
+			return policyOutcome{
+				Allow:             false,
+				ReasonCode:        "artifact_external_uri_requires_ring_3",
+				ConditionsApplied: []string{"ring_3_required_for_external_actions"},
+				FallbackMode:      "deny",
+			}
+		}
+	}
+
+	if strings.HasPrefix(action, "run.review.") {
+		out.ConditionsApplied = append(out.ConditionsApplied, "review_action_allowed")
+	}
+
+	return out
+}
+
+func minimumRingForMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case string(ExecutionModeLLM), string(ExecutionModeDual):
+		return string(ExecutionRing2)
+	default:
+		return string(ExecutionRing1)
+	}
+}
+
+func ringRank(ring string) int {
+	switch strings.ToLower(strings.TrimSpace(ring)) {
+	case string(ExecutionRing0):
+		return 0
+	case string(ExecutionRing1):
+		return 1
+	case string(ExecutionRing2):
+		return 2
+	case string(ExecutionRing3):
+		return 3
+	default:
+		return -1
+	}
+}
+
+func executionRingFromAny(value any) string {
+	ring := strings.TrimSpace(fmt.Sprintf("%v", value))
+	if ring == "" || ring == "<nil>" {
+		return string(ExecutionRing1)
+	}
+	return ring
+}
+
+func isExternalTarget(target string) bool {
+	target = strings.ToLower(strings.TrimSpace(target))
+	if target == "" {
+		return false
+	}
+	if strings.Contains(target, "127.0.0.1") || strings.Contains(target, "localhost") || strings.Contains(target, "ai-precision") {
+		return false
+	}
+	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
+}
+
+func optionalRunID(run *Run) *string {
+	if run == nil || strings.TrimSpace(run.ID) == "" {
+		return nil
+	}
+	value := run.ID
+	return &value
+}
+
+func optionalCycleID(cycle *Cycle) *string {
+	if cycle == nil || strings.TrimSpace(cycle.ID) == "" {
+		return nil
+	}
+	value := cycle.ID
+	return &value
+}
+
+func policyDeniedError(decision PolicyDecision) error {
+	return fmt.Errorf("policy denied (%s) by %s@%s", decision.ReasonCode, decision.PolicyBundleID, decision.PolicyBundleVersion)
+}
+
+func (m *Manager) markExecutionPolicyFailure(ctx context.Context, runID string, cycle *Cycle) error {
+	return m.tx.InTx(ctx, func(ctx context.Context, q store.DBTX) error {
+		run, err := m.repo.Get(ctx, q, runID)
+		if err != nil {
+			return err
+		}
+		run.Status = string(RunStatusFailedPolicy)
+		if _, err := m.repo.Update(ctx, q, run); err != nil {
+			return err
+		}
+		if cycle != nil {
+			loaded, err := m.repo.GetCycle(ctx, q, runID, cycle.ID)
+			if err != nil {
+				return err
+			}
+			loaded.Status = string(CycleStatusFailedPolicy)
+			if _, err := m.repo.UpdateCycle(ctx, q, loaded); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func mergeJSONObjects(raw json.RawMessage, patch map[string]any) json.RawMessage {
+	payload := map[string]any{}
+	if len(raw) != 0 && string(raw) != "{}" {
+		_ = json.Unmarshal(raw, &payload)
+	}
+	for key, value := range patch {
+		payload[key] = value
+	}
+	body, _ := json.Marshal(payload)
+	return body
+}
+
+func ternary(condition bool, ifTrue string, ifFalse string) string {
+	if condition {
+		return ifTrue
+	}
+	return ifFalse
 }
 
 type phaseTimeouts struct {

@@ -30,6 +30,9 @@ func (runsStub) Create(context.Context, runs.CreateInput, string) (runs.Run, err
 func (runsStub) Update(context.Context, string, runs.UpdateInput, string) (runs.Run, error) {
 	return runs.Run{}, nil
 }
+func (runsStub) ReviewAction(context.Context, string, runs.ReviewActionInput, string) (runs.Run, error) {
+	return runs.Run{}, nil
+}
 func (runsStub) StartRun(context.Context, string, runs.ExecuteRunInput, string) (runs.ExecuteRunResult, error) {
 	return runs.ExecuteRunResult{}, nil
 }

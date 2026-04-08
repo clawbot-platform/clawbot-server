@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -175,6 +177,8 @@ type InferenceResponse struct {
 	PrimaryOutput   json.RawMessage `json:"primary_output"`
 	GuardrailOutput json.RawMessage `json:"guardrail_output"`
 	Guardrail       json.RawMessage `json:"guardrail"`
+	GuardrailStatus string          `json:"guardrail_status"`
+	GuardrailScore  *float64        `json:"guardrail_score,omitempty"`
 	HelperOutput    json.RawMessage `json:"helper_output"`
 	PrimaryText     string          `json:"primary_text,omitempty"`
 	GuardrailText   string          `json:"guardrail_text,omitempty"`
@@ -279,6 +283,13 @@ func (c *HTTPInferenceClient) executeGateway(ctx context.Context, baseURL string
 	if len(decoded.Data.Guardrail) == 0 && len(decoded.Data.GuardrailOutput) != 0 {
 		decoded.Data.Guardrail = decoded.Data.GuardrailOutput
 	}
+	if strings.TrimSpace(decoded.Data.GuardrailStatus) == "" {
+		if input.EnableGuardrails {
+			decoded.Data.GuardrailStatus = string(GuardrailStatusPassed)
+		} else {
+			decoded.Data.GuardrailStatus = string(GuardrailStatusDisabled)
+		}
+	}
 
 	slog.Default().Debug("inference.gateway.completed",
 		"provider", strings.TrimSpace(input.Provider),
@@ -305,8 +316,20 @@ func (c *HTTPInferenceClient) executeLocalOllama(ctx context.Context, baseURL st
 	helperTimeout := c.resolveTimeout(input.HelperTimeoutSeconds)
 	guardrailInvoked := input.EnableGuardrails && strings.TrimSpace(input.GuardrailModel) != ""
 	helperInvoked := input.EnableHelperModel && input.HelperRequested && strings.TrimSpace(input.HelperModel) != ""
+	phaseRootCtx, phaseRootCancel, phaseRootDetached := buildOllamaPhaseRootContext(ctx, primaryTimeout, guardrailTimeout, helperTimeout, guardrailInvoked, helperInvoked)
+	defer phaseRootCancel()
+	if phaseRootDetached {
+		slog.Default().Debug("inference.local_ollama.phase_root_detached",
+			"provider", "local_ollama",
+			"guardrail_invoked", guardrailInvoked,
+			"helper_invoked", helperInvoked,
+			"primary_timeout_ms", primaryTimeout.Milliseconds(),
+			"guardrail_timeout_ms", guardrailTimeout.Milliseconds(),
+			"helper_timeout_ms", helperTimeout.Milliseconds(),
+		)
+	}
 
-	primaryContent, primaryPayloadBytes, primaryElapsed, err := c.callOllamaChat(ctx, baseURL, "primary", primaryTimeout, ollamaChatRequest{
+	primaryContent, primaryPayloadBytes, primaryElapsed, err := c.callOllamaChat(phaseRootCtx, baseURL, "primary", primaryTimeout, ollamaChatRequest{
 		Model:    input.PrimaryModel,
 		Messages: buildPrimaryMessages(input),
 		Format:   localOllamaFormat(input.ExpectJSON),
@@ -341,53 +364,75 @@ func (c *HTTPInferenceClient) executeLocalOllama(ctx context.Context, baseURL st
 	)
 
 	response := InferenceResponse{
-		PrimaryOutput: primaryOutput,
-		PrimaryText:   primaryText,
-		ModelTag:      input.PrimaryModel,
+		PrimaryOutput:   primaryOutput,
+		PrimaryText:     primaryText,
+		ModelTag:        input.PrimaryModel,
+		GuardrailStatus: string(GuardrailStatusDisabled),
 	}
 
 	if guardrailInvoked {
-		guardrailContent, guardrailPayloadBytes, guardrailElapsed, guardrailErr := c.callOllamaChat(ctx, baseURL, "guardrail", guardrailTimeout, ollamaChatRequest{
+		thinkFalse := false
+		guardrailContent, guardrailPayloadBytes, guardrailElapsed, guardrailErr := c.callOllamaChat(phaseRootCtx, baseURL, "guardrail", guardrailTimeout, ollamaChatRequest{
 			Model: input.GuardrailModel,
 			Messages: []ollamaMessage{
-				{Role: "system", Content: "Evaluate policy risk. Return compact JSON with fields decision, risk_level, rationale."},
+				{Role: "system", Content: "You are a strict guardrail scorer. Return only <score> yes </score> or <score> no </score>."},
 				{Role: "user", Content: buildCompactGuardrailInput(input, primaryOutput)},
 			},
-			Format:  localOllamaFormat(true),
-			Stream:  false,
-			Options: buildOllamaOptions(input),
+			Stream:    false,
+			Think:     &thinkFalse,
+			KeepAlive: "10m",
+			Options:   buildOllamaOptions(input),
 		})
 		if guardrailErr != nil {
-			return InferenceResponse{}, guardrailErr
-		}
-
-		guardrailOutput, guardrailText, guardrailMapErr := mapOllamaContent(guardrailContent, true)
-		if guardrailMapErr != nil {
-			slog.Default().Debug("inference.local_ollama.parse_failed",
+			response.GuardrailStatus = classifyGuardrailFailure(guardrailErr)
+			response.GuardrailText = guardrailErr.Error()
+			slog.Default().Debug("inference.local_ollama.guardrail_failed",
 				"provider", "local_ollama",
 				"model", input.GuardrailModel,
 				"phase", "guardrail",
 				"payload_bytes", guardrailPayloadBytes,
 				"elapsed_ms", guardrailElapsed.Milliseconds(),
+				"guardrail_status", response.GuardrailStatus,
+				"think_false", true,
 				"parse_ok", false,
 			)
-			return InferenceResponse{}, fmt.Errorf("map guardrail ollama response: %w", guardrailMapErr)
+		} else {
+			guardrailOutput, guardrailText, guardrailStatus, guardrailScore, guardrailMapErr := parseLocalGuardrailContent(guardrailContent)
+			if guardrailMapErr != nil {
+				response.GuardrailStatus = string(GuardrailStatusUnavailable)
+				response.GuardrailText = fmt.Sprintf("guardrail response mapping failed: %v", guardrailMapErr)
+				slog.Default().Debug("inference.local_ollama.parse_failed",
+					"provider", "local_ollama",
+					"model", input.GuardrailModel,
+					"phase", "guardrail",
+					"payload_bytes", guardrailPayloadBytes,
+					"elapsed_ms", guardrailElapsed.Milliseconds(),
+					"guardrail_status", response.GuardrailStatus,
+					"think_false", true,
+					"parse_ok", false,
+				)
+			} else {
+				response.GuardrailStatus = guardrailStatus
+				response.GuardrailScore = guardrailScore
+				response.GuardrailOutput = guardrailOutput
+				response.Guardrail = guardrailOutput
+				response.GuardrailText = guardrailText
+				response.GuardrailTag = input.GuardrailModel
+				slog.Default().Debug("inference.local_ollama.completed",
+					"provider", "local_ollama",
+					"model", input.GuardrailModel,
+					"phase", "guardrail",
+					"payload_bytes", guardrailPayloadBytes,
+					"elapsed_ms", guardrailElapsed.Milliseconds(),
+					"guardrail_status", guardrailStatus,
+					"guardrail_score", guardrailScoreOrZero(guardrailScore),
+					"think_false", true,
+					"guardrail_invoked", true,
+					"helper_invoked", helperInvoked,
+					"parse_ok", true,
+				)
+			}
 		}
-		slog.Default().Debug("inference.local_ollama.completed",
-			"provider", "local_ollama",
-			"model", input.GuardrailModel,
-			"phase", "guardrail",
-			"payload_bytes", guardrailPayloadBytes,
-			"elapsed_ms", guardrailElapsed.Milliseconds(),
-			"guardrail_invoked", true,
-			"helper_invoked", helperInvoked,
-			"parse_ok", true,
-		)
-
-		response.GuardrailOutput = guardrailOutput
-		response.Guardrail = guardrailOutput
-		response.GuardrailText = guardrailText
-		response.GuardrailTag = input.GuardrailModel
 	}
 
 	if helperInvoked {
@@ -398,7 +443,7 @@ func (c *HTTPInferenceClient) executeLocalOllama(ctx context.Context, baseURL st
 		}
 		helperBody, _ := json.Marshal(helperPayload)
 
-		helperContent, helperPayloadBytes, helperElapsed, helperErr := c.callOllamaChat(ctx, baseURL, "helper", helperTimeout, ollamaChatRequest{
+		helperContent, helperPayloadBytes, helperElapsed, helperErr := c.callOllamaChat(phaseRootCtx, baseURL, "helper", helperTimeout, ollamaChatRequest{
 			Model: input.HelperModel,
 			Messages: []ollamaMessage{
 				{Role: "system", Content: "Provide helper transformation output. Return JSON when possible."},
@@ -452,17 +497,62 @@ func (c *HTTPInferenceClient) executeLocalOllama(ctx context.Context, baseURL st
 	return response, nil
 }
 
+func buildOllamaPhaseRootContext(
+	parent context.Context,
+	primaryTimeout time.Duration,
+	guardrailTimeout time.Duration,
+	helperTimeout time.Duration,
+	guardrailInvoked bool,
+	helperInvoked bool,
+) (context.Context, context.CancelFunc, bool) {
+	required := primaryTimeout
+	if required <= 0 {
+		required = 15 * time.Second
+	}
+	if guardrailInvoked {
+		required += guardrailTimeout
+	}
+	if helperInvoked {
+		required += helperTimeout
+	}
+	// Small buffer for parse/persistence work around model calls.
+	required += 3 * time.Second
+
+	noop := func() {}
+	if required <= 0 {
+		return parent, noop, false
+	}
+	if err := parent.Err(); err != nil {
+		if !errors.Is(err, context.DeadlineExceeded) {
+			return parent, noop, false
+		}
+		detached, cancel := context.WithTimeout(context.WithoutCancel(parent), required)
+		return detached, cancel, true
+	}
+	if deadline, ok := parent.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining > 0 && remaining >= required {
+			return parent, noop, false
+		}
+		detached, cancel := context.WithTimeout(context.WithoutCancel(parent), required)
+		return detached, cancel, true
+	}
+	return parent, noop, false
+}
+
 type ollamaMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
 type ollamaChatRequest struct {
-	Model    string          `json:"model"`
-	Messages []ollamaMessage `json:"messages"`
-	Format   any             `json:"format,omitempty"`
-	Stream   bool            `json:"stream"`
-	Options  map[string]any  `json:"options,omitempty"`
+	Model     string          `json:"model"`
+	Messages  []ollamaMessage `json:"messages"`
+	Format    any             `json:"format,omitempty"`
+	Stream    bool            `json:"stream"`
+	Think     *bool           `json:"think,omitempty"`
+	KeepAlive string          `json:"keep_alive,omitempty"`
+	Options   map[string]any  `json:"options,omitempty"`
 }
 
 type ollamaChatResponse struct {
@@ -574,7 +664,7 @@ func localOllamaFormat(expectJSON bool) any {
 }
 
 func mapOllamaContent(content string, expectJSON bool) (json.RawMessage, string, error) {
-	trimmed := strings.TrimSpace(content)
+	trimmed := strings.TrimSpace(stripThinkWrappers(content))
 	if trimmed == "" {
 		return nil, "", fmt.Errorf("empty content")
 	}
@@ -583,6 +673,10 @@ func mapOllamaContent(content string, expectJSON bool) (json.RawMessage, string,
 	if expectJSON {
 		if json.Valid([]byte(candidate)) {
 			return json.RawMessage(candidate), candidate, nil
+		}
+		if score, ok := parseScoreFromContent(candidate); ok {
+			body, _ := json.Marshal(map[string]any{"score": score})
+			return body, candidate, nil
 		}
 		return nil, candidate, fmt.Errorf("content is not valid json")
 	}
@@ -601,6 +695,190 @@ func stripJSONFence(value string) string {
 	trimmed = strings.TrimPrefix(trimmed, "```")
 	trimmed = strings.TrimSuffix(trimmed, "```")
 	return strings.TrimSpace(trimmed)
+}
+
+func stripThinkWrappers(value string) string {
+	trimmed := strings.TrimSpace(value)
+	trimmed = strings.ReplaceAll(trimmed, "<think></think>", "")
+	trimmed = strings.ReplaceAll(trimmed, "<think>\n</think>", "")
+	trimmed = strings.ReplaceAll(trimmed, "</think>", "")
+	trimmed = strings.ReplaceAll(trimmed, "<think>", "")
+	return strings.TrimSpace(trimmed)
+}
+
+func parseScoreFromContent(value string) (float64, bool) {
+	token, ok := parseScoreTokenContent(value)
+	if !ok {
+		return 0, false
+	}
+	score, err := strconv.ParseFloat(token, 64)
+	if err != nil {
+		return 0, false
+	}
+	return score, true
+}
+
+func parseScoreTokenContent(value string) (string, bool) {
+	lower := strings.ToLower(value)
+	start := strings.Index(lower, "<score>")
+	end := strings.Index(lower, "</score>")
+	if start == -1 || end == -1 || end <= start+7 {
+		return "", false
+	}
+	token := strings.TrimSpace(value[start+7 : end])
+	if token == "" {
+		return "", false
+	}
+	return strings.ToLower(token), true
+}
+
+func classifyGuardrailFailure(err error) string {
+	if err == nil {
+		return string(GuardrailStatusUnavailable)
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "deadline exceeded") || strings.Contains(message, "timeout") {
+		return string(GuardrailStatusTimeout)
+	}
+	return string(GuardrailStatusUnavailable)
+}
+
+func parseGuardrailStatusAndScore(output json.RawMessage) (string, *float64) {
+	if len(output) == 0 || string(output) == "{}" {
+		return string(GuardrailStatusUnavailable), nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return string(GuardrailStatusFlagged), nil
+	}
+
+	if scoreValue, ok := payload["score"]; ok {
+		switch typed := scoreValue.(type) {
+		case float64:
+			if typed >= 0.7 {
+				return string(GuardrailStatusFlagged), &typed
+			}
+			return string(GuardrailStatusPassed), &typed
+		case string:
+			normalized := strings.ToLower(strings.TrimSpace(typed))
+			if isGuardrailYesToken(normalized) {
+				score := 1.0
+				return string(GuardrailStatusFlagged), &score
+			}
+			if isGuardrailNoToken(normalized) {
+				score := 0.0
+				return string(GuardrailStatusPassed), &score
+			}
+			score, err := strconv.ParseFloat(normalized, 64)
+			if err == nil {
+				if score >= 0.7 {
+					return string(GuardrailStatusFlagged), &score
+				}
+				return string(GuardrailStatusPassed), &score
+			}
+		}
+	}
+
+	decision := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", payload["decision"])))
+	switch decision {
+	case "allow", "pass", "passed", "ok", "approve", "approved":
+		return string(GuardrailStatusPassed), nil
+	case "flag", "flagged", "deny", "reject", "blocked":
+		return string(GuardrailStatusFlagged), nil
+	default:
+		return string(GuardrailStatusFlagged), nil
+	}
+}
+
+func guardrailScoreOrZero(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func parseLocalGuardrailContent(content string) (json.RawMessage, string, string, *float64, error) {
+	trimmed := strings.TrimSpace(stripThinkWrappers(content))
+	if trimmed == "" {
+		return nil, "", "", nil, fmt.Errorf("empty guardrail content")
+	}
+
+	candidate := stripJSONFence(trimmed)
+	if json.Valid([]byte(candidate)) {
+		output := json.RawMessage(candidate)
+		status, score := parseGuardrailStatusAndScore(output)
+		return output, candidate, status, score, nil
+	}
+
+	if token, ok := parseScoreTokenContent(candidate); ok {
+		return mapGuardrailScoreToken(candidate, token)
+	}
+
+	plainToken := strings.ToLower(strings.TrimSpace(candidate))
+	if isGuardrailYesToken(plainToken) || isGuardrailNoToken(plainToken) {
+		return mapGuardrailScoreToken(candidate, plainToken)
+	}
+
+	if numeric, err := strconv.ParseFloat(strings.TrimSpace(candidate), 64); err == nil {
+		return mapGuardrailNumericScore(candidate, numeric)
+	}
+
+	return nil, candidate, "", nil, fmt.Errorf("guardrail content is not parseable score output")
+}
+
+func mapGuardrailScoreToken(rawText string, token string) (json.RawMessage, string, string, *float64, error) {
+	normalized := strings.ToLower(strings.TrimSpace(token))
+	if numeric, err := strconv.ParseFloat(normalized, 64); err == nil {
+		return mapGuardrailNumericScore(rawText, numeric)
+	}
+	switch {
+	case isGuardrailYesToken(normalized):
+		score := 1.0
+		body, _ := json.Marshal(map[string]any{
+			"score":  "yes",
+			"status": string(GuardrailStatusFlagged),
+		})
+		return body, strings.TrimSpace(rawText), string(GuardrailStatusFlagged), &score, nil
+	case isGuardrailNoToken(normalized):
+		score := 0.0
+		body, _ := json.Marshal(map[string]any{
+			"score":  "no",
+			"status": string(GuardrailStatusPassed),
+		})
+		return body, strings.TrimSpace(rawText), string(GuardrailStatusPassed), &score, nil
+	default:
+		return nil, strings.TrimSpace(rawText), "", nil, fmt.Errorf("unsupported guardrail score token %q", token)
+	}
+}
+
+func mapGuardrailNumericScore(rawText string, score float64) (json.RawMessage, string, string, *float64, error) {
+	status := string(GuardrailStatusPassed)
+	if score >= 0.7 {
+		status = string(GuardrailStatusFlagged)
+	}
+	body, _ := json.Marshal(map[string]any{
+		"score":  score,
+		"status": status,
+	})
+	return body, strings.TrimSpace(rawText), status, &score, nil
+}
+
+func isGuardrailYesToken(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "yes", "y", "true", "flag", "flagged", "deny", "blocked", "reject", "fail":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGuardrailNoToken(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "no", "n", "false", "allow", "pass", "passed", "ok", "approve", "approved":
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeRawToAny(raw json.RawMessage) any {
@@ -625,20 +903,32 @@ func (c *HTTPInferenceClient) resolveTimeout(seconds int) time.Duration {
 }
 
 func buildCompactGuardrailInput(input InferenceRequest, primaryOutput json.RawMessage) string {
-	payload := map[string]any{
-		"request_summary": truncateText(input.Prompt, 320),
-		"system_summary":  truncateText(input.SystemPrompt, 260),
-		"context_summary": compactJSONSummary(input.InputJSON, 8, 220),
-		"primary_summary": compactJSONSummary(primaryOutput, 10, 220),
-		"risk_criteria": []string{
-			"nacha_compliance",
-			"fraud_signal_quality",
-			"policy_violation_risk",
-			"hallucination_risk",
-		},
+	lines := []string{
+		"criterion: flag output when ACH/NACHA or fraud-risk concerns need reviewer escalation.",
+		"goal: decide if reviewer follow-up is required.",
 	}
-	body, _ := json.Marshal(payload)
-	return string(body)
+
+	if request := strings.TrimSpace(truncateText(input.Prompt, 220)); request != "" {
+		lines = append(lines, "request_summary: "+request)
+	}
+	if primary := compactJSONString(primaryOutput, 6, 220); primary != "" {
+		lines = append(lines, "primary_summary: "+primary)
+	}
+	if context := compactJSONString(input.InputJSON, 5, 180); context != "" {
+		lines = append(lines, "context_summary: "+context)
+	}
+	lines = append(lines, "question: should this output be flagged? Return only <score> yes </score> or <score> no </score>.")
+
+	return strings.Join(lines, "\n")
+}
+
+func compactJSONString(raw json.RawMessage, maxKeys int, maxChars int) string {
+	summary := compactJSONSummary(raw, maxKeys, maxChars)
+	if len(summary) == 0 {
+		return ""
+	}
+	body, _ := json.Marshal(summary)
+	return truncateText(string(body), maxChars)
 }
 
 func compactJSONSummary(raw json.RawMessage, maxKeys int, maxChars int) map[string]any {
