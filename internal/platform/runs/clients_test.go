@@ -627,3 +627,192 @@ func TestParseLocalGuardrailContentNumericCompatibility(t *testing.T) {
 		t.Fatalf("unexpected output %s", output)
 	}
 }
+
+func TestHTTPMemoryClientFetchScopedContext(t *testing.T) {
+	t.Helper()
+
+	var payload map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/scoped-memory/context" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		defer func() { _ = r.Body.Close() }()
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"prior_cycle_summaries":["day-1"],"carry_forward_risks":["risk-1"]}}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPMemoryClient(srv.URL+"/", 0)
+	got, err := client.FetchScopedContext(context.Background(), MemoryNamespace{
+		RepoNamespace: "ach-trust-lab",
+		RunNamespace:  "week-run",
+	})
+	if err != nil {
+		t.Fatalf("FetchScopedContext() error = %v", err)
+	}
+	if client.BaseURL() != srv.URL {
+		t.Fatalf("expected trimmed base url %q, got %q", srv.URL, client.BaseURL())
+	}
+	if len(got.PriorCycleSummaries) != 1 || got.PriorCycleSummaries[0] != "day-1" {
+		t.Fatalf("unexpected memory context %#v", got)
+	}
+	namespace, ok := payload["namespace"].(map[string]any)
+	if !ok || namespace["repo_namespace"] != "ach-trust-lab" {
+		t.Fatalf("expected namespace payload, got %#v", payload)
+	}
+}
+
+func TestHTTPMemoryClientPersistScopedNotes(t *testing.T) {
+	t.Helper()
+
+	var payload map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/scoped-memory/notes" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		defer func() { _ = r.Body.Close() }()
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"snapshot_ref":"snapshot-42"}}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPMemoryClient(srv.URL, time.Second)
+	ref, err := client.PersistScopedNotes(context.Background(), MemoryNamespace{
+		RepoNamespace:  "ach-trust-lab",
+		RunNamespace:   "week-run",
+		CycleNamespace: "day-4",
+	}, MemoryWriteInput{
+		Note:              "carry forward descriptor drift",
+		UnresolvedGaps:    []string{"missing receiver telemetry"},
+		CarryForwardRisks: []string{"risk-2"},
+	})
+	if err != nil {
+		t.Fatalf("PersistScopedNotes() error = %v", err)
+	}
+	if ref != "snapshot-42" {
+		t.Fatalf("expected snapshot ref snapshot-42, got %q", ref)
+	}
+	input, ok := payload["input"].(map[string]any)
+	if !ok || input["note"] != "carry forward descriptor drift" {
+		t.Fatalf("expected input payload, got %#v", payload)
+	}
+}
+
+func TestHTTPMemoryClientHandlesStatusAndDecodeErrors(t *testing.T) {
+	t.Helper()
+
+	t.Run("context_non_200", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "boom", http.StatusBadGateway)
+		}))
+		defer srv.Close()
+
+		client := NewHTTPMemoryClient(srv.URL, time.Second)
+		_, err := client.FetchScopedContext(context.Background(), MemoryNamespace{})
+		if err == nil || !strings.Contains(err.Error(), "returned status 502") {
+			t.Fatalf("expected status error, got %v", err)
+		}
+	})
+
+	t.Run("notes_bad_json", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{`))
+		}))
+		defer srv.Close()
+
+		client := NewHTTPMemoryClient(srv.URL, time.Second)
+		_, err := client.PersistScopedNotes(context.Background(), MemoryNamespace{}, MemoryWriteInput{})
+		if err == nil || !strings.Contains(err.Error(), "decode scoped memory note response") {
+			t.Fatalf("expected decode error, got %v", err)
+		}
+	})
+}
+
+func TestHTTPInferenceClientExecuteGatewayErrors(t *testing.T) {
+	t.Helper()
+
+	client := NewHTTPInferenceClient("", time.Second)
+	_, err := client.Execute(context.Background(), InferenceRequest{Provider: "gateway"})
+	if err == nil || !strings.Contains(err.Error(), "base url is not configured") {
+		t.Fatalf("expected missing base url error, got %v", err)
+	}
+
+	t.Run("non_200", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "fail", http.StatusBadGateway)
+		}))
+		defer srv.Close()
+
+		client := NewHTTPInferenceClient(srv.URL, time.Second)
+		_, err := client.Execute(context.Background(), InferenceRequest{Provider: "gateway"})
+		if err == nil || !strings.Contains(err.Error(), "returned status 502") {
+			t.Fatalf("expected status error, got %v", err)
+		}
+	})
+
+	t.Run("bad_json", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":`))
+		}))
+		defer srv.Close()
+
+		client := NewHTTPInferenceClient(srv.URL, time.Second)
+		_, err := client.Execute(context.Background(), InferenceRequest{Provider: "gateway"})
+		if err == nil || !strings.Contains(err.Error(), "decode inference response") {
+			t.Fatalf("expected decode error, got %v", err)
+		}
+	})
+
+	t.Run("expect_json_requires_primary_output", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"guardrail":{"decision":"pass"}}}`))
+		}))
+		defer srv.Close()
+
+		client := NewHTTPInferenceClient(srv.URL, time.Second)
+		_, err := client.Execute(context.Background(), InferenceRequest{
+			Provider:   "gateway",
+			ExpectJSON: true,
+		})
+		if err == nil || !strings.Contains(err.Error(), "structured output requested") {
+			t.Fatalf("expected structured output error, got %v", err)
+		}
+	})
+}
+
+func TestParseLocalGuardrailContentPlainTokensAndFailures(t *testing.T) {
+	t.Helper()
+
+	output, _, status, score, err := parseLocalGuardrailContent("yes")
+	if err != nil {
+		t.Fatalf("parseLocalGuardrailContent(yes) error = %v", err)
+	}
+	if status != string(GuardrailStatusFlagged) || score == nil || *score != 1 {
+		t.Fatalf("expected flagged with score=1, got status=%q score=%v", status, score)
+	}
+	if string(output) != `{"score":"yes","status":"guardrail_flagged"}` {
+		t.Fatalf("unexpected output %s", output)
+	}
+
+	_, _, _, _, err = parseLocalGuardrailContent("definitely maybe")
+	if err == nil {
+		t.Fatal("expected parse failure for unsupported token")
+	}
+}

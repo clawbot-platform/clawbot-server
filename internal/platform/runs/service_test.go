@@ -10,12 +10,45 @@ import (
 	"clawbot-server/internal/platform/audit"
 	"clawbot-server/internal/platform/scheduler"
 	"clawbot-server/internal/platform/store"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type transactorStub struct{}
 
 func (transactorStub) InTx(ctx context.Context, fn func(context.Context, store.DBTX) error) error {
 	return fn(ctx, nil)
+}
+
+type dbtxStub struct {
+	queryRowFn func(context.Context, string, ...any) pgx.Row
+}
+
+func (s dbtxStub) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, nil
+}
+
+func (s dbtxStub) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, nil
+}
+
+func (s dbtxStub) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if s.queryRowFn != nil {
+		return s.queryRowFn(ctx, sql, args...)
+	}
+	return rowStub{scanFn: func(...any) error { return nil }}
+}
+
+type rowStub struct {
+	scanFn func(...any) error
+}
+
+func (r rowStub) Scan(dest ...any) error {
+	if r.scanFn == nil {
+		return nil
+	}
+	return r.scanFn(dest...)
 }
 
 type repositoryStub struct {
@@ -1132,5 +1165,217 @@ func TestExecuteCycleRunDualGuardrailsEnabledSetsComparisonGuardrailPresent(t *t
 	}
 	if present, _ := deltas["guardrail_present"].(bool); !present {
 		t.Fatalf("expected guardrail_present=true, got %#v", deltas)
+	}
+}
+
+func TestManagerListGetAndUpdate(t *testing.T) {
+	repo := newRepositoryStub()
+	manager := NewManager(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{})
+
+	created, err := manager.Create(context.Background(), CreateInput{Name: "list-get-update"}, "owner")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	items, err := manager.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(items) != 1 || items[0].ID != created.ID {
+		t.Fatalf("unexpected list payload %#v", items)
+	}
+
+	loaded, err := manager.Get(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if loaded.ID != created.ID {
+		t.Fatalf("unexpected get payload %#v", loaded)
+	}
+
+	name := "list-get-update-renamed"
+	status := string(RunStatusScheduled)
+	updated, err := manager.Update(context.Background(), created.ID, UpdateInput{
+		Name:   &name,
+		Status: &status,
+	}, "owner")
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.Name != name || updated.Status != status {
+		t.Fatalf("unexpected update payload %#v", updated)
+	}
+}
+
+func TestReviewActionWithCycleUpdatesCycleStatus(t *testing.T) {
+	repo := newRepositoryStub()
+	manager := NewManager(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{})
+
+	run, err := manager.Create(context.Background(), CreateInput{
+		Name:          "review-cycle-run",
+		RunType:       string(RunTypeWeekRun),
+		ExecutionMode: string(ExecutionModeDual),
+		ExecutionRing: string(ExecutionRing2),
+		Status:        string(RunStatusReviewPending),
+	}, "owner")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	cycle, err := manager.CreateCycle(context.Background(), run.ID, CreateCycleInput{
+		CycleKey: "day-3",
+		Status:   string(CycleStatusReviewPending),
+	}, "owner")
+	if err != nil {
+		t.Fatalf("CreateCycle() error = %v", err)
+	}
+
+	updated, err := manager.ReviewAction(context.Background(), run.ID, ReviewActionInput{
+		Action:     "defer",
+		ReviewerID: "reviewer-2",
+		CycleID:    &cycle.ID,
+		Rationale:  "needs additional data feeds",
+	}, "reviewer-2")
+	if err != nil {
+		t.Fatalf("ReviewAction() error = %v", err)
+	}
+	if updated.Status != string(RunStatusDeferred) {
+		t.Fatalf("expected run deferred status, got %s", updated.Status)
+	}
+
+	updatedCycle := repo.cyclesByID[cycle.ID]
+	if updatedCycle.Status != string(CycleStatusDeferred) {
+		t.Fatalf("expected cycle deferred status, got %s", updatedCycle.Status)
+	}
+}
+
+func TestStartRunPolicyDeniedMarksRunAndCycleFailedPolicy(t *testing.T) {
+	repo := newRepositoryStub()
+	_, _ = repo.RegisterModelProfile(context.Background(), nil, RegisterModelProfileInput{
+		Name:               "ach-default",
+		Provider:           "local_ollama",
+		BaseURL:            "http://ai-precision:11434",
+		PrimaryModel:       "ibm/granite3.3:8b",
+		GuardrailModel:     "ibm/granite3.3-guardian:8b",
+		HelperModel:        "granite4:3b",
+		TimeoutSeconds:     45,
+		Temperature:        0.1,
+		MaxTokens:          4096,
+		ConnectionMetadata: json.RawMessage(`{}`),
+	}, "system")
+
+	manager := NewManagerWithIntegrations(nil, transactorStub{}, repo, &auditStub{}, &schedulerStub{}, &memoryStub{}, &inferenceStub{}, DependencyConfig{})
+
+	run, err := manager.Create(context.Background(), CreateInput{
+		Name:          "policy-deny-execute",
+		RunType:       string(RunTypeWeekRun),
+		ExecutionMode: string(ExecutionModeDeterministic),
+		ExecutionRing: string(ExecutionRing1),
+		ModelProfile:  "ach-default",
+	}, "owner")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	cycle, err := manager.CreateCycle(context.Background(), run.ID, CreateCycleInput{
+		CycleKey:      "day-5",
+		ExecutionRing: string(ExecutionRing1),
+		Status:        string(CycleStatusPending),
+	}, "owner")
+	if err != nil {
+		t.Fatalf("CreateCycle() error = %v", err)
+	}
+
+	// Force execute policy denial path while keeping a valid pre-created run/cycle.
+	loaded := repo.runsByID[run.ID]
+	loaded.ExecutionMode = string(ExecutionModeLLM)
+	loaded.ExecutionRing = string(ExecutionRing1)
+	loaded.ModelProfile = "ach-default"
+	repo.runsByID[run.ID] = loaded
+
+	_, err = manager.ExecuteCycleRun(context.Background(), run.ID, cycle.ID, ExecuteRunInput{}, "owner")
+	if err == nil {
+		t.Fatal("expected policy denial error")
+	}
+	if repo.runsByID[run.ID].Status != string(RunStatusFailedPolicy) {
+		t.Fatalf("expected run failed_policy status, got %s", repo.runsByID[run.ID].Status)
+	}
+	if repo.cyclesByID[cycle.ID].Status != string(CycleStatusFailedPolicy) {
+		t.Fatalf("expected cycle failed_policy status, got %s", repo.cyclesByID[cycle.ID].Status)
+	}
+}
+
+func TestDependencyHealthConfiguredAndDegraded(t *testing.T) {
+	t.Run("configured_and_healthy", func(t *testing.T) {
+		manager := NewManagerWithIntegrations(
+			dbtxStub{
+				queryRowFn: func(context.Context, string, ...any) pgx.Row {
+					return rowStub{scanFn: func(dest ...any) error {
+						*dest[0].(*int) = 1
+						return nil
+					}}
+				},
+			},
+			transactorStub{},
+			newRepositoryStub(),
+			&auditStub{},
+			&schedulerStub{},
+			&memoryStub{},
+			&inferenceStub{},
+			DependencyConfig{
+				ClawmemBaseURL:   "http://clawmem.internal",
+				InferenceBaseURL: "http://ai-precision",
+			},
+		)
+
+		health, err := manager.DependencyHealth(context.Background())
+		if err != nil {
+			t.Fatalf("DependencyHealth() error = %v", err)
+		}
+		if health.Status != "healthy" {
+			t.Fatalf("expected healthy status, got %#v", health)
+		}
+		if health.Dependencies[1].Status != "configured" || health.Dependencies[2].Status != "configured" {
+			t.Fatalf("expected configured integrations, got %#v", health.Dependencies)
+		}
+	})
+
+	t.Run("postgres_degraded", func(t *testing.T) {
+		manager := NewManagerWithIntegrations(
+			dbtxStub{
+				queryRowFn: func(context.Context, string, ...any) pgx.Row {
+					return rowStub{scanFn: func(...any) error { return fmt.Errorf("postgres unavailable") }}
+				},
+			},
+			transactorStub{},
+			newRepositoryStub(),
+			&auditStub{},
+			&schedulerStub{},
+			&memoryStub{},
+			&inferenceStub{},
+			DependencyConfig{},
+		)
+
+		health, err := manager.DependencyHealth(context.Background())
+		if err != nil {
+			t.Fatalf("DependencyHealth() error = %v", err)
+		}
+		if health.Status != "degraded" || health.Dependencies[0].Status != "down" {
+			t.Fatalf("expected degraded postgres status, got %#v", health)
+		}
+		if health.Dependencies[0].Error == "" {
+			t.Fatalf("expected postgres error detail, got %#v", health.Dependencies[0])
+		}
+	})
+}
+
+func TestReviewActionValidationAndMappings(t *testing.T) {
+	if err := validateReviewActionInput(ReviewActionInput{Action: "approve"}); err == nil {
+		t.Fatal("expected reviewer_id validation error")
+	}
+
+	if _, err := mapReviewActionToCycleStatus("unknown"); err == nil {
+		t.Fatal("expected unknown cycle action mapping error")
+	}
+	if _, err := mapReviewActionToRunStatus("unknown"); err == nil {
+		t.Fatal("expected unknown run action mapping error")
 	}
 }

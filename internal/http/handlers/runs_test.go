@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"clawbot-server/internal/platform/runs"
+	"clawbot-server/internal/platform/store"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -82,6 +84,64 @@ func (s *runsServiceStub) GetModelProfile(_ context.Context, idOrName string) (r
 }
 func (s *runsServiceStub) DependencyHealth(context.Context) (runs.DependencyHealth, error) {
 	return s.dependencyFn()
+}
+
+func newRunsServiceStub() *runsServiceStub {
+	return &runsServiceStub{
+		listResult: []runs.Run{{ID: "run-1", Name: "Run One"}},
+		getResult:  runs.Run{ID: "run-1", Name: "Run One", Status: "pending"},
+		createFn:   emptyRunCreate,
+		updateFn:   emptyRunUpdate,
+		reviewFn: func(runID string, input runs.ReviewActionInput, _ string) (runs.Run, error) {
+			return runs.Run{ID: runID, Status: input.Action, Notes: input.Rationale}, nil
+		},
+		startRunFn: func(runID string, input runs.ExecuteRunInput, _ string) (runs.ExecuteRunResult, error) {
+			return runs.ExecuteRunResult{RunID: runID, Status: "review_pending", LLMSummary: input.InputJSON}, nil
+		},
+		execCycleFn: func(runID string, cycleID string, _ runs.ExecuteRunInput, _ string) (runs.ExecuteRunResult, error) {
+			return runs.ExecuteRunResult{RunID: runID, CycleID: &cycleID, Status: "review_pending"}, nil
+		},
+		attachArtifactFn: func(runID string, input runs.AttachArtifactInput, _ string) (runs.Artifact, error) {
+			return runs.Artifact{ID: "artifact-1", RunID: runID, ArtifactType: input.ArtifactType, URI: input.URI}, nil
+		},
+		listArtifactsFn: func(runID string) ([]runs.Artifact, error) {
+			return []runs.Artifact{{ID: "artifact-1", RunID: runID}}, nil
+		},
+		createCycleFn: func(runID string, input runs.CreateCycleInput, _ string) (runs.Cycle, error) {
+			if runID == "" {
+				return runs.Cycle{}, errors.New("run id is required")
+			}
+			return runs.Cycle{ID: "cycle-1", RunID: runID, CycleKey: input.CycleKey, Status: input.Status}, nil
+		},
+		updateCycleFn: func(runID string, cycleID string, input runs.UpdateCycleInput, _ string) (runs.Cycle, error) {
+			return runs.Cycle{ID: cycleID, RunID: runID, Status: derefString(input.Status, "pending")}, nil
+		},
+		getCycleFn: func(runID string, cycleID string) (runs.Cycle, error) {
+			return runs.Cycle{ID: cycleID, RunID: runID, CycleKey: "day-1", Status: "pending"}, nil
+		},
+		upsertCompareFn: func(runID string, input runs.UpsertComparisonInput, _ string) (runs.Comparison, error) {
+			return runs.Comparison{ID: "cmp-1", RunID: runID, ReviewStatus: input.ReviewStatus}, nil
+		},
+		getCompareFn: func(runID string) (runs.Comparison, error) {
+			return runs.Comparison{ID: "cmp-1", RunID: runID, ReviewStatus: string(runs.ReviewStatusReviewPending)}, nil
+		},
+		registerProfileFn: func(input runs.RegisterModelProfileInput, _ string) (runs.ModelProfile, error) {
+			return runs.ModelProfile{ID: "profile-1", Name: input.Name, Provider: input.Provider}, nil
+		},
+		getProfileFn: func(idOrName string) (runs.ModelProfile, error) {
+			return runs.ModelProfile{ID: "profile-1", Name: idOrName, Provider: "local_ollama"}, nil
+		},
+		dependencyFn: func() (runs.DependencyHealth, error) {
+			return runs.DependencyHealth{Status: "healthy"}, nil
+		},
+	}
+}
+
+func derefString(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func TestRunsHandlerCreate(t *testing.T) {
@@ -232,6 +292,191 @@ func TestRunsHandlerApproveRun(t *testing.T) {
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+}
+
+func TestRunsHandlerListAndGet(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/runs", nil)
+	listRec := httptest.NewRecorder()
+	handler.List(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for List, got %d", listRec.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/runs/run-1", nil)
+	getReq = getReq.WithContext(context.WithValue(getReq.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	getRec := httptest.NewRecorder()
+	handler.Get(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for Get, got %d", getRec.Code)
+	}
+}
+
+func TestRunsHandlerCreateValidationFailure(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", bytes.NewBufferString(`{"name":"bad","unknown":true}`))
+	rec := httptest.NewRecorder()
+
+	handler.Create(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	var payload map[string]map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if code, _ := payload["error"]["code"].(string); code != "invalid_json" {
+		t.Fatalf("expected invalid_json code, got %#v", payload)
+	}
+}
+
+func TestRunsHandlerCreateServiceErrorMapping(t *testing.T) {
+	stub := newRunsServiceStub()
+	stub.createFn = func(runs.CreateInput, string) (runs.Run, error) { return runs.Run{}, store.ErrNotFound }
+	handler := NewRunsHandler(stub)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", bytes.NewBufferString(`{"name":"missing","status":"pending"}`))
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestRunsHandlerCycleEndpoints(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/runs/run-1/cycles", bytes.NewBufferString(`{"cycle_key":"day-2","status":"pending"}`))
+	createReq = createReq.WithContext(context.WithValue(createReq.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	createRec := httptest.NewRecorder()
+	handler.CreateCycle(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for CreateCycle, got %d", createRec.Code)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPatch, "/api/v1/runs/run-1/cycles/cycle-1", bytes.NewBufferString(`{"status":"running"}`))
+	updateReq = updateReq.WithContext(context.WithValue(updateReq.Context(), chi.RouteCtxKey, routeContextMany(map[string]string{"runID": "run-1", "cycleID": "cycle-1"})))
+	updateRec := httptest.NewRecorder()
+	handler.UpdateCycle(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for UpdateCycle, got %d", updateRec.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/runs/run-1/cycles/cycle-1", nil)
+	getReq = getReq.WithContext(context.WithValue(getReq.Context(), chi.RouteCtxKey, routeContextMany(map[string]string{"runID": "run-1", "cycleID": "cycle-1"})))
+	getRec := httptest.NewRecorder()
+	handler.GetCycle(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for GetCycle, got %d", getRec.Code)
+	}
+}
+
+func TestRunsHandlerCreateCycleMissingRunID(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs//cycles", bytes.NewBufferString(`{"cycle_key":"day-2","status":"pending"}`))
+	rec := httptest.NewRecorder()
+	handler.CreateCycle(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing runID, got %d", rec.Code)
+	}
+}
+
+func TestRunsHandlerStartRunInvalidJSONAndSuccess(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	badReq := httptest.NewRequest(http.MethodPost, "/api/v1/runs/run-1/start", bytes.NewBufferString(`{"prompt":`))
+	badReq = badReq.WithContext(context.WithValue(badReq.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	badRec := httptest.NewRecorder()
+	handler.StartRun(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid StartRun JSON, got %d", badRec.Code)
+	}
+
+	okReq := httptest.NewRequest(http.MethodPost, "/api/v1/runs/run-1/start", bytes.NewBufferString(`{"prompt":"go","input_json":{"x":1}}`))
+	okReq = okReq.WithContext(context.WithValue(okReq.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	okRec := httptest.NewRecorder()
+	handler.StartRun(okRec, okReq)
+	if okRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for StartRun, got %d", okRec.Code)
+	}
+}
+
+func TestRunsHandlerArtifactAndComparisonEndpoints(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	listArtifactsReq := httptest.NewRequest(http.MethodGet, "/api/v1/runs/run-1/artifacts", nil)
+	listArtifactsReq = listArtifactsReq.WithContext(context.WithValue(listArtifactsReq.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	listArtifactsRec := httptest.NewRecorder()
+	handler.ListArtifacts(listArtifactsRec, listArtifactsReq)
+	if listArtifactsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for ListArtifacts, got %d", listArtifactsRec.Code)
+	}
+
+	upsertReq := httptest.NewRequest(http.MethodPut, "/api/v1/runs/run-1/comparison", bytes.NewBufferString(`{"review_status":"review_pending"}`))
+	upsertReq = upsertReq.WithContext(context.WithValue(upsertReq.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	upsertRec := httptest.NewRecorder()
+	handler.UpsertComparison(upsertRec, upsertReq)
+	if upsertRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for UpsertComparison, got %d", upsertRec.Code)
+	}
+
+	getComparisonReq := httptest.NewRequest(http.MethodGet, "/api/v1/runs/run-1/comparison", nil)
+	getComparisonReq = getComparisonReq.WithContext(context.WithValue(getComparisonReq.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+	getComparisonRec := httptest.NewRecorder()
+	handler.GetComparison(getComparisonRec, getComparisonReq)
+	if getComparisonRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for GetComparison, got %d", getComparisonRec.Code)
+	}
+}
+
+func TestRunsHandlerModelProfileEndpoints(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/v1/model-profiles", bytes.NewBufferString(`{"name":"ach-local","provider":"local_ollama"}`))
+	registerRec := httptest.NewRecorder()
+	handler.RegisterModelProfile(registerRec, registerReq)
+	if registerRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for RegisterModelProfile, got %d", registerRec.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/model-profiles/ach-local", nil)
+	getReq = getReq.WithContext(context.WithValue(getReq.Context(), chi.RouteCtxKey, routeContext("modelProfileID", "ach-local")))
+	getRec := httptest.NewRecorder()
+	handler.GetModelProfile(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for GetModelProfile, got %d", getRec.Code)
+	}
+}
+
+func TestRunsHandlerReviewEndpoints(t *testing.T) {
+	handler := NewRunsHandler(newRunsServiceStub())
+
+	cases := []struct {
+		name   string
+		target func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "reject", target: handler.RejectRun},
+		{name: "override", target: handler.OverrideRun},
+		{name: "defer", target: handler.DeferRun},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/run-1/"+tc.name, bytes.NewBufferString(`{"rationale":"operator action"}`))
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeContext("runID", "run-1")))
+			rec := httptest.NewRecorder()
+			tc.target(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200 for %s, got %d", tc.name, rec.Code)
+			}
+		})
 	}
 }
 

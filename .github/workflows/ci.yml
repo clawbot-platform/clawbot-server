@@ -9,6 +9,22 @@ on:
 jobs:
   go-ci:
     runs-on: ubuntu-latest
+    env:
+      CLAWBOT_TEST_DATABASE_URL: postgres://clawbot:clawbot@127.0.0.1:5432/clawbot_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clawbot_test
+          POSTGRES_USER: clawbot
+          POSTGRES_PASSWORD: clawbot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clawbot -d clawbot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
         with:

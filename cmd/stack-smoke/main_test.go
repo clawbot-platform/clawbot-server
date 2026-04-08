@@ -130,6 +130,57 @@ func TestCheckPostgresAuthRequestIsReady(t *testing.T) {
 	}
 }
 
+func TestCheckPostgresServerStartingUpError(t *testing.T) {
+	restore := withDialStub(t, func(server net.Conn) {
+		defer func() {
+			_ = server.Close()
+		}()
+
+		header := make([]byte, 4)
+		if _, err := io.ReadFull(server, header); err != nil {
+			t.Fatalf("ReadFull(header) error = %v", err)
+		}
+		length := int(binary.BigEndian.Uint32(header))
+		body := make([]byte, length-4)
+		if _, err := io.ReadFull(server, body); err != nil {
+			t.Fatalf("ReadFull(body) error = %v", err)
+		}
+
+		payload := []byte("Mthe database system is starting up\x00\x00")
+		reply := make([]byte, 5+len(payload))
+		reply[0] = 'E'
+		binary.BigEndian.PutUint32(reply[1:5], uint32(4+len(payload)))
+		copy(reply[5:], payload)
+		_, _ = server.Write(reply)
+	})
+	defer restore()
+
+	cfg := config.Foundation{
+		PostgresHost: "127.0.0.1",
+		PostgresPort: "5432",
+		PostgresUser: "clawbot",
+		PostgresDB:   "clawbot",
+		Timeout:      time.Second,
+	}
+
+	err := checkPostgres(context.Background(), cfg)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "starting up") {
+		t.Fatalf("expected starting up error, got %v", err)
+	}
+}
+
+func TestParsePostgresError(t *testing.T) {
+	message := parsePostgresError([]byte("SERROR\x00Mprimary message\x00Ddetail text\x00\x00"))
+	if message != "primary message: detail text" {
+		t.Fatalf("unexpected postgres error parse %q", message)
+	}
+
+	unknown := parsePostgresError([]byte("\x00\x00"))
+	if unknown != "unknown postgres error" {
+		t.Fatalf("expected unknown fallback, got %q", unknown)
+	}
+}
+
 func withDialStub(t *testing.T, handler func(net.Conn)) func() {
 	t.Helper()
 
