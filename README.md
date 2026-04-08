@@ -29,16 +29,16 @@ It belongs to the broader `clawbot-platform` organization, but it is not coupled
 
 - image: `ghcr.io/clawbot-platform/clawbot-server`
 - immutable tag pattern: `sha-<12-char-sha>`
-- operational tag examples:
-  - `drq-v1-baseline-20260329`
-  - `drq-v1-tuned-20260401`
+- release tags for this cycle:
+  - `v2.0.0` (exact release)
+  - `v2` (major stream)
 
 Runtime hosts should pull published images instead of building locally. They do not need Go, npm, or other development tooling just to deploy or run the control plane.
 
-Publish from GitHub Actions with the `publish-image` workflow and a `release_tag` input such as:
+Release publishing paths:
 
-- `drq-v1-baseline-20260329`
-- `drq-v1-tuned-20260401`
+- push a git tag like `v2.0.0` to trigger `publish-image`
+- or run `publish-image` manually with `release_tag=v2.0.0`
 
 If a stale package already exists in GHCR from an older manual or CLI push and is not linked to this repository, fix that in GitHub Packages before relying on the new workflow:
 
@@ -47,6 +47,11 @@ If a stale package already exists in GHCR from an older manual or CLI push and i
 - publish once to a temporary new image name if cleanup must be staged
 
 Avoid PAT-based publishing workarounds. The repo workflow uses the repository `GITHUB_TOKEN`.
+
+Release packaging docs:
+
+- `docs/releases/v2.0.0.md`
+- `docs/releases/UPGRADE_TO_V2.md`
 
 ## What this repository provides
 

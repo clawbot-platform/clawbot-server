@@ -6,7 +6,7 @@ ENV_FILE := .env
 COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) -f $(COMPOSE_OVERRIDE)
 GO_ENV := GOCACHE=$(CURDIR)/.cache/go-build GOMODCACHE=$(CURDIR)/.cache/go-mod
 COVERAGE_FILE := coverage.out
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION ?= $(shell (test -f VERSION && cat VERSION) || (git describe --tags --always --dirty 2>/dev/null || echo dev))
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -X 'clawbot-server/internal/version.Value=$(VERSION)' \
