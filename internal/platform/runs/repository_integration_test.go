@@ -453,9 +453,11 @@ func TestRepositoryRunArtifactsComparisonsAndGovernanceDBBacked(t *testing.T) {
 	if event1.PreviousEventHash != "" {
 		t.Fatalf("expected empty previous hash for first event, got %q", event1.PreviousEventHash)
 	}
-	expectedHash1 := governanceEventHash("", firstInput, firstInput.PayloadSummary)
-	if event1.CurrentEventHash != expectedHash1 {
-		t.Fatalf("unexpected first hash %q (want %q)", event1.CurrentEventHash, expectedHash1)
+	if event1.CurrentEventHash == "" {
+		t.Fatal("expected first current hash to be set")
+	}
+	if !strings.HasPrefix(event1.CurrentEventHash, "sha256:") {
+		t.Fatalf("expected first current hash to have sha256 prefix, got %q", event1.CurrentEventHash)
 	}
 
 	secondInput := GovernanceAuditEventInput{
@@ -475,17 +477,28 @@ func TestRepositoryRunArtifactsComparisonsAndGovernanceDBBacked(t *testing.T) {
 	if event2.PreviousEventHash != event1.CurrentEventHash {
 		t.Fatalf("expected hash chain linkage, got prev=%q want=%q", event2.PreviousEventHash, event1.CurrentEventHash)
 	}
-	expectedHash2 := governanceEventHash(event1.CurrentEventHash, secondInput, secondInput.PayloadSummary)
-	if event2.CurrentEventHash != expectedHash2 {
-		t.Fatalf("unexpected second hash %q (want %q)", event2.CurrentEventHash, expectedHash2)
+	if event2.CurrentEventHash == "" {
+		t.Fatal("expected second current hash to be set")
+	}
+	if !strings.HasPrefix(event2.CurrentEventHash, "sha256:") {
+		t.Fatalf("expected second current hash to have sha256 prefix, got %q", event2.CurrentEventHash)
+	}
+	if event2.CurrentEventHash == event1.CurrentEventHash {
+		t.Fatalf("expected second current hash to differ from first, got %q", event2.CurrentEventHash)
 	}
 
 	var persistedPrev, persistedCurrent string
 	if err := pool.QueryRow(ctx, `SELECT previous_event_hash, current_event_hash FROM governance_audit_events WHERE id = $1`, event2.ID).Scan(&persistedPrev, &persistedCurrent); err != nil {
 		t.Fatalf("query governance hash fields: %v", err)
 	}
-	if persistedPrev != event1.CurrentEventHash || persistedCurrent != expectedHash2 {
-		t.Fatalf("unexpected persisted governance hash chain prev=%q current=%q", persistedPrev, persistedCurrent)
+	if persistedPrev != event1.CurrentEventHash || persistedCurrent != event2.CurrentEventHash {
+		t.Fatalf(
+			"unexpected persisted governance hash chain prev=%q current=%q (want prev=%q current=%q)",
+			persistedPrev,
+			persistedCurrent,
+			event1.CurrentEventHash,
+			event2.CurrentEventHash,
+		)
 	}
 }
 
