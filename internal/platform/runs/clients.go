@@ -97,7 +97,7 @@ func (c *HTTPMemoryClient) FetchScopedContext(ctx context.Context, ns MemoryName
 	if err != nil {
 		return MemoryContext{}, fmt.Errorf("fetch scoped memory context: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return MemoryContext{}, fmt.Errorf("fetch scoped memory context returned status %d", resp.StatusCode)
@@ -134,7 +134,7 @@ func (c *HTTPMemoryClient) PersistScopedNotes(ctx context.Context, ns MemoryName
 	if err != nil {
 		return "", fmt.Errorf("persist scoped memory note: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return "", fmt.Errorf("persist scoped memory note returned status %d", resp.StatusCode)
@@ -261,7 +261,7 @@ func (c *HTTPInferenceClient) executeGateway(ctx context.Context, baseURL string
 	if err != nil {
 		return InferenceResponse{}, fmt.Errorf("execute inference request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return InferenceResponse{}, fmt.Errorf("execute inference request returned status %d", resp.StatusCode)
@@ -595,7 +595,7 @@ func (c *HTTPInferenceClient) callOllamaChat(
 	if err != nil {
 		return "", payloadBytes, time.Since(start), fmt.Errorf("execute ollama %s request: %w", phase, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -879,17 +879,6 @@ func isGuardrailNoToken(value string) bool {
 	default:
 		return false
 	}
-}
-
-func decodeRawToAny(raw json.RawMessage) any {
-	if len(raw) == 0 {
-		return map[string]any{}
-	}
-	var out any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return string(raw)
-	}
-	return out
 }
 
 func (c *HTTPInferenceClient) resolveTimeout(seconds int) time.Duration {

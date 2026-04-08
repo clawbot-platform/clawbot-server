@@ -776,9 +776,6 @@ func (m *Manager) executeRun(ctx context.Context, runID string, forcedCycleID *s
 			if m.deps.DisableLocalOllamaGuardrails && isLocalOllamaProvider(profile.Provider) {
 				enableGuardrails = false
 			}
-			if !enableGuardrails {
-				effectiveGuardrailStatus = string(GuardrailStatusDisabled)
-			}
 
 			inferenceResponse, err := m.inference.Execute(ctx, InferenceRequest{
 				Provider:                profile.Provider,

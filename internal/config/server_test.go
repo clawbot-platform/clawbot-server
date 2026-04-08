@@ -1,8 +1,57 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+func clearServerEnv(t *testing.T) {
+	t.Helper()
+
+	keys := []string{
+		"DATABASE_URL",
+		"SERVER_ADDRESS",
+		"CONTROL_PLANE_ENABLED",
+		"STACK_SMOKE_TIMEOUT",
+		"SHUTDOWN_TIMEOUT",
+		"CLAWMEM_BASE_URL",
+		"CLAWMEM_TIMEOUT",
+		"INFERENCE_BASE_URL",
+		"INFERENCE_PROVIDER",
+		"INFERENCE_MODEL_PROFILE",
+		"INFERENCE_TIMEOUT",
+		"GUARDRAIL_TIMEOUT",
+		"HELPER_TIMEOUT",
+		"GUARDRAIL_MODEL",
+		"HELPER_MODEL",
+		"LOCAL_OLLAMA_DISABLE_GUARDRAILS",
+		"ENABLE_COMPACT_DUAL_PAYLOAD",
+	}
+
+	saved := make(map[string]*string, len(keys))
+	for _, k := range keys {
+		if v, ok := os.LookupEnv(k); ok {
+			vv := v
+			saved[k] = &vv
+		} else {
+			saved[k] = nil
+		}
+		_ = os.Unsetenv(k)
+	}
+
+	t.Cleanup(func() {
+		for _, k := range keys {
+			if v := saved[k]; v != nil {
+				_ = os.Setenv(k, *v)
+			} else {
+				_ = os.Unsetenv(k)
+			}
+		}
+	})
+}
 
 func TestLoadServerFromEnvDefaults(t *testing.T) {
+	clearServerEnv(t)
 	t.Setenv("DATABASE_URL", "postgres://clawbot:test@127.0.0.1:5432/clawbot?sslmode=disable")
 
 	cfg, err := LoadServerFromEnv()
@@ -43,12 +92,15 @@ func TestLoadServerFromEnvDefaults(t *testing.T) {
 }
 
 func TestLoadServerFromEnvRequiresDatabaseURL(t *testing.T) {
+	clearServerEnv(t)
+
 	if _, err := LoadServerFromEnv(); err == nil {
 		t.Fatal("expected DATABASE_URL validation error")
 	}
 }
 
 func TestLoadServerFromEnvInvalidShutdownTimeout(t *testing.T) {
+	clearServerEnv(t)
 	t.Setenv("DATABASE_URL", "postgres://clawbot:test@127.0.0.1:5432/clawbot?sslmode=disable")
 	t.Setenv("SHUTDOWN_TIMEOUT", "later")
 
@@ -58,6 +110,7 @@ func TestLoadServerFromEnvInvalidShutdownTimeout(t *testing.T) {
 }
 
 func TestLoadServerFromEnvInvalidOptionalDurations(t *testing.T) {
+	clearServerEnv(t)
 	t.Setenv("DATABASE_URL", "postgres://clawbot:test@127.0.0.1:5432/clawbot?sslmode=disable")
 	t.Setenv("GUARDRAIL_TIMEOUT", "not-a-duration")
 

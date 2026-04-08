@@ -243,66 +243,6 @@ func emptyRunUpdate(string, runs.UpdateInput, string) (runs.Run, error) {
 	return runs.Run{ID: "run-1", Name: "Run", Status: "pending"}, nil
 }
 
-func (s *runsServiceStub) ensureDefaults() {
-	if s.createFn == nil {
-		s.createFn = emptyRunCreate
-	}
-	if s.updateFn == nil {
-		s.updateFn = emptyRunUpdate
-	}
-	if s.startRunFn == nil {
-		s.startRunFn = func(runID string, _ runs.ExecuteRunInput, _ string) (runs.ExecuteRunResult, error) {
-			return runs.ExecuteRunResult{RunID: runID, Status: "completed"}, nil
-		}
-	}
-	if s.reviewFn == nil {
-		s.reviewFn = func(runID string, _ runs.ReviewActionInput, _ string) (runs.Run, error) {
-			return runs.Run{ID: runID, Status: "approved"}, nil
-		}
-	}
-	if s.execCycleFn == nil {
-		s.execCycleFn = func(runID string, cycleID string, _ runs.ExecuteRunInput, _ string) (runs.ExecuteRunResult, error) {
-			return runs.ExecuteRunResult{RunID: runID, CycleID: &cycleID, Status: "completed"}, nil
-		}
-	}
-	if s.attachArtifactFn == nil {
-		s.attachArtifactFn = func(runID string, _ runs.AttachArtifactInput, _ string) (runs.Artifact, error) {
-			return runs.Artifact{ID: "art-1", RunID: runID}, nil
-		}
-	}
-	if s.listArtifactsFn == nil {
-		s.listArtifactsFn = func(string) ([]runs.Artifact, error) { return nil, nil }
-	}
-	if s.createCycleFn == nil {
-		s.createCycleFn = func(string, runs.CreateCycleInput, string) (runs.Cycle, error) { return runs.Cycle{}, nil }
-	}
-	if s.updateCycleFn == nil {
-		s.updateCycleFn = func(string, string, runs.UpdateCycleInput, string) (runs.Cycle, error) { return runs.Cycle{}, nil }
-	}
-	if s.getCycleFn == nil {
-		s.getCycleFn = func(string, string) (runs.Cycle, error) { return runs.Cycle{}, nil }
-	}
-	if s.upsertCompareFn == nil {
-		s.upsertCompareFn = func(string, runs.UpsertComparisonInput, string) (runs.Comparison, error) {
-			return runs.Comparison{}, nil
-		}
-	}
-	if s.getCompareFn == nil {
-		s.getCompareFn = func(string) (runs.Comparison, error) { return runs.Comparison{}, nil }
-	}
-	if s.registerProfileFn == nil {
-		s.registerProfileFn = func(runs.RegisterModelProfileInput, string) (runs.ModelProfile, error) {
-			return runs.ModelProfile{}, nil
-		}
-	}
-	if s.getProfileFn == nil {
-		s.getProfileFn = func(string) (runs.ModelProfile, error) { return runs.ModelProfile{}, nil }
-	}
-	if s.dependencyFn == nil {
-		s.dependencyFn = func() (runs.DependencyHealth, error) { return runs.DependencyHealth{Status: "healthy"}, nil }
-	}
-}
-
 func routeContext(key string, value string) *chi.Context {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add(key, value)

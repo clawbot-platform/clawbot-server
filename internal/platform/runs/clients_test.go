@@ -28,7 +28,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaPrimary(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		if err := json.Unmarshal(body, &lastBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
@@ -108,7 +108,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaGuardrailAndHelper(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -204,7 +204,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaGuardrailYesMapsToFlagged(t *testi
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -252,7 +252,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaHelperFailureIsNonBlocking(t *test
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -299,7 +299,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaGuardrailTimeoutIsDeferred(t *test
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -350,7 +350,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaGuardrailPhaseContextIsolated(t *t
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -405,7 +405,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaHelperPhaseContextIsolated(t *test
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -493,7 +493,7 @@ func TestHTTPInferenceClientExecuteLocalOllamaUsesPhaseTimeouts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
