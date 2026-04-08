@@ -1,16 +1,16 @@
 package runs
 
 import (
+	"clawbot-server/internal/db"
+	"clawbot-server/internal/platform/store"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	"clawbot-server/internal/db"
-	"clawbot-server/internal/platform/store"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -268,7 +268,12 @@ func TestRepositoryRunArtifactsComparisonsAndGovernanceDBBacked(t *testing.T) {
 	ctx := context.Background()
 
 	run := createIntegrationRun(ctx, t, repo, pool, string(RunTypeWeekRun), string(ExecutionModeDual))
-	cycle, err := repo.CreateCycle(ctx, pool, run.ID, CreateCycleInput{CycleKey: "day-2", ExecutionRing: string(ExecutionRing2), Status: string(CycleStatusPending), MetadataJSON: json.RawMessage(`{}`)})
+	cycle, err := repo.CreateCycle(ctx, pool, run.ID, CreateCycleInput{
+		CycleKey:      "day-2",
+		ExecutionRing: string(ExecutionRing2),
+		Status:        string(CycleStatusPending),
+		MetadataJSON:  json.RawMessage(`{}`),
+	})
 	if err != nil {
 		t.Fatalf("CreateCycle() error = %v", err)
 	}
@@ -349,12 +354,42 @@ func TestRepositoryRunArtifactsComparisonsAndGovernanceDBBacked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertComparison(update) error = %v", err)
 	}
+
 	loaded, err := repo.GetComparison(ctx, pool, run.ID)
 	if err != nil {
 		t.Fatalf("GetComparison() error = %v", err)
 	}
-	if string(loaded.DeterministicSummary) != `{"precision":0.95}` || loaded.ReviewStatus != string(ReviewStatusApproved) || loaded.FinalDisposition != "accepted" {
-		t.Fatalf("unexpected comparison summary %#v", loaded)
+
+	if loaded.ID == "" {
+		t.Fatal("expected comparison id")
+	}
+	if loaded.RunID != run.ID {
+		t.Fatalf("unexpected comparison run id: got %q want %q", loaded.RunID, run.ID)
+	}
+	if loaded.CycleID == nil || *loaded.CycleID != cycle.ID {
+		t.Fatalf("unexpected comparison cycle id: got %#v want %q", loaded.CycleID, cycle.ID)
+	}
+
+	mustJSONEqual(t, loaded.DeterministicSummary, json.RawMessage(`{"precision":0.95}`))
+	mustJSONEqual(t, loaded.LLMSummary, json.RawMessage(`{"recommendation":"promote to shadow mode"}`))
+	mustJSONEqual(t, loaded.GuardrailSummary, json.RawMessage(`{"decision":"allow","status":"guardrail_passed"}`))
+	mustJSONEqual(t, loaded.Deltas, json.RawMessage(`{"alerts":"+1"}`))
+	mustJSONEqual(t, loaded.FinalOutput, json.RawMessage(`{"decision":"ship"}`))
+
+	if loaded.ReviewStatus != string(ReviewStatusApproved) {
+		t.Fatalf("unexpected review status: got %q want %q", loaded.ReviewStatus, string(ReviewStatusApproved))
+	}
+	if loaded.ReviewerNotes != "" {
+		t.Fatalf("unexpected reviewer notes: %q", loaded.ReviewerNotes)
+	}
+	if loaded.FinalDisposition != "accepted" {
+		t.Fatalf("unexpected final disposition: got %q want %q", loaded.FinalDisposition, "accepted")
+	}
+	if loaded.CreatedAt.IsZero() {
+		t.Fatal("expected CreatedAt to be set")
+	}
+	if loaded.UpdatedAt.IsZero() {
+		t.Fatal("expected UpdatedAt to be set")
 	}
 
 	otherRun := createIntegrationRun(ctx, t, repo, pool, string(RunTypeWeekRun), string(ExecutionModeDual))
@@ -451,5 +486,23 @@ func TestRepositoryRunArtifactsComparisonsAndGovernanceDBBacked(t *testing.T) {
 	}
 	if persistedPrev != event1.CurrentEventHash || persistedCurrent != expectedHash2 {
 		t.Fatalf("unexpected persisted governance hash chain prev=%q current=%q", persistedPrev, persistedCurrent)
+	}
+}
+
+func mustJSONEqual(t *testing.T, got, want json.RawMessage) {
+	t.Helper()
+
+	var gotValue any
+	var wantValue any
+
+	if err := json.Unmarshal(got, &gotValue); err != nil {
+		t.Fatalf("unmarshal got json: %v", err)
+	}
+	if err := json.Unmarshal(want, &wantValue); err != nil {
+		t.Fatalf("unmarshal want json: %v", err)
+	}
+
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Fatalf("json mismatch\ngot:  %s\nwant: %s", string(got), string(want))
 	}
 }
