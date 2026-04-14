@@ -11,11 +11,15 @@ type Server struct {
 	AppEnv                       string
 	HTTPAddress                  string
 	DatabaseURL                  string
+	NATSURL                      string
 	LogLevel                     string
 	AutoMigrate                  bool
 	ShutdownTimeout              time.Duration
 	ClawmemBaseURL               string
 	ClawmemTimeout               time.Duration
+	IdentityBaseURL              string
+	IdentityTenant               string
+	IdentityTimeout              time.Duration
 	InferenceBaseURL             string
 	InferenceTimeout             time.Duration
 	GuardrailTimeout             time.Duration
@@ -36,10 +40,13 @@ func LoadServerFromEnv() (Server, error) {
 		AppEnv:                       envOrDefault("APP_ENV", "development"),
 		HTTPAddress:                  envOrDefault("SERVER_ADDRESS", "127.0.0.1:8080"),
 		DatabaseURL:                  strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		NATSURL:                      envOrDefault("CLAWBOT_NATS_URL", envOrDefault("NATS_URL", "nats://127.0.0.1:4222")),
 		LogLevel:                     envOrDefault("LOG_LEVEL", "info"),
 		AutoMigrate:                  parseBool(envOrDefault("AUTO_MIGRATE", "true")),
 		ClawmemBaseURL:               strings.TrimSpace(os.Getenv("CLAWMEM_BASE_URL")),
 		InferenceBaseURL:             envOrDefault("INFERENCE_BASE_URL", "http://ai-precision:11434"),
+		IdentityBaseURL:              strings.TrimSpace(os.Getenv("CLAWBOT_IDENTITY_BASE_URL")),
+		IdentityTenant:               strings.TrimSpace(os.Getenv("CLAWBOT_IDENTITY_TENANT")),
 		ModelProvider:                envOrDefault("MODEL_PROVIDER", "local_ollama"),
 		PrimaryModel:                 envOrDefault("PRIMARY_MODEL", "ibm/granite3.3:8b"),
 		GuardrailModel:               envOrDefault("GUARDRAIL_MODEL", "ibm/granite3.3-guardian:8b"),
@@ -62,6 +69,12 @@ func LoadServerFromEnv() (Server, error) {
 		return Server{}, fmt.Errorf("parse CLAWMEM_TIMEOUT: %w", err)
 	}
 	cfg.ClawmemTimeout = clawmemTimeout
+
+	identityTimeout, err := time.ParseDuration(envOrDefault("CLAWBOT_IDENTITY_TIMEOUT", "5s"))
+	if err != nil {
+		return Server{}, fmt.Errorf("parse CLAWBOT_IDENTITY_TIMEOUT: %w", err)
+	}
+	cfg.IdentityTimeout = identityTimeout
 
 	inferenceTimeout, err := time.ParseDuration(envOrDefault("INFERENCE_TIMEOUT", "120s"))
 	if err != nil {

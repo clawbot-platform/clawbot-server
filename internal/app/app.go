@@ -11,7 +11,9 @@ import (
 
 	"clawbot-server/internal/config"
 	"clawbot-server/internal/db"
+	"clawbot-server/internal/http/handlers"
 	"clawbot-server/internal/http/routes"
+	"clawbot-server/internal/identityclient"
 	"clawbot-server/internal/platform/audit"
 	"clawbot-server/internal/platform/bots"
 	"clawbot-server/internal/platform/ops"
@@ -20,7 +22,7 @@ import (
 	"clawbot-server/internal/platform/scheduler"
 	"clawbot-server/internal/platform/store"
 	"clawbot-server/internal/version"
-
+	"clawbot-server/internal/watchlistidentity"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -60,13 +62,17 @@ func RunServer(ctx context.Context, cfg config.Server, logger *slog.Logger) erro
 	pg := store.NewPostgres(pool)
 	buildInfo := version.Current()
 	services := buildServices(pg, buildInfo, cfg)
+	identityRuntime := startIdentityEventRuntime(cfg, logger)
+	defer identityRuntime.Close()
+
 	router := routes.New(logger, routes.Services{
-		System:    routes.NewSystemHandler(pg.Ping),
-		Runs:      services.runs,
-		Bots:      services.bots,
-		Policies:  services.policies,
-		Dashboard: services.dashboard,
-		Ops:       services.ops,
+		System:              routes.NewSystemHandler(pg.Ping),
+		Runs:                services.runs,
+		Bots:                services.bots,
+		Policies:            services.policies,
+		Dashboard:           services.dashboard,
+		Ops:                 services.ops,
+		IdentityIntegration: handlers.NewIdentityIntegrationHandler(services.watchlistIdentity),
 	})
 
 	server := &http.Server{
@@ -114,11 +120,12 @@ func MigrateDown(ctx context.Context, cfg config.Server, _ *slog.Logger) error {
 }
 
 type appServices struct {
-	runs      runs.Service
-	bots      bots.Service
-	policies  policies.Service
-	dashboard *store.DashboardReader
-	ops       *ops.Manager
+	runs              runs.Service
+	bots              bots.Service
+	policies          policies.Service
+	dashboard         *store.DashboardReader
+	ops               *ops.Manager
+	watchlistIdentity *watchlistidentity.Service
 }
 
 func buildServices(pg *store.Postgres, buildInfo version.Info, cfg config.Server) appServices {
@@ -139,6 +146,9 @@ func buildServices(pg *store.Postgres, buildInfo version.Info, cfg config.Server
 	if strings.TrimSpace(cfg.InferenceBaseURL) != "" {
 		inferenceClient = runs.NewHTTPInferenceClient(cfg.InferenceBaseURL, cfg.InferenceTimeout)
 	}
+
+	identityClient := identityclient.New(cfg.IdentityBaseURL, cfg.IdentityTimeout, cfg.IdentityTenant)
+	watchlistIntegration := watchlistidentity.NewService(identityClient)
 
 	return appServices{
 		runs: runs.NewManagerWithIntegrations(
@@ -161,9 +171,10 @@ func buildServices(pg *store.Postgres, buildInfo version.Info, cfg config.Server
 				Environment:                  cfg.AppEnv,
 			},
 		),
-		bots:      bots.NewManager(pg.Pool(), pg, botsRepo, audits),
-		policies:  policies.NewManager(pg.Pool(), pg, policiesRepo, audits),
-		dashboard: store.NewDashboardReader(pg.Pool()),
-		ops:       ops.NewManager(buildInfo),
+		bots:              bots.NewManager(pg.Pool(), pg, botsRepo, audits),
+		policies:          policies.NewManager(pg.Pool(), pg, policiesRepo, audits),
+		dashboard:         store.NewDashboardReader(pg.Pool()),
+		ops:               ops.NewManager(buildInfo),
+		watchlistIdentity: watchlistIntegration,
 	}
 }

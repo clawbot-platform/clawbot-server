@@ -49,6 +49,14 @@ func main() {
 		{name: "redis", run: checkRedis},
 		{name: "nats", run: checkNATS},
 	}
+	if identityHealthURL := resolveIdentityHealthURL(); identityHealthURL != "" {
+		checks = append(checks, smokeCheck{
+			name: "clawbot-identity",
+			run: func(ctx context.Context, cfg config.Foundation) error {
+				return checkHTTP(ctx, identityHealthURL, cfg.Timeout)
+			},
+		})
+	}
 
 	if checkOptional {
 		checks = append(checks,
@@ -224,6 +232,14 @@ func checkHTTP(ctx context.Context, url string, timeout time.Duration) error {
 	}
 
 	return nil
+}
+
+func resolveIdentityHealthURL() string {
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("CLAWBOT_IDENTITY_BASE_URL")), "/")
+	if baseURL == "" {
+		return ""
+	}
+	return baseURL + "/healthz"
 }
 
 func buildStartupPacket(user string, database string) ([]byte, error) {

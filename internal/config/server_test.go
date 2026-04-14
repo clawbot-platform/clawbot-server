@@ -14,8 +14,13 @@ func clearServerEnv(t *testing.T) {
 		"CONTROL_PLANE_ENABLED",
 		"STACK_SMOKE_TIMEOUT",
 		"SHUTDOWN_TIMEOUT",
+		"CLAWBOT_NATS_URL",
+		"NATS_URL",
 		"CLAWMEM_BASE_URL",
 		"CLAWMEM_TIMEOUT",
+		"CLAWBOT_IDENTITY_BASE_URL",
+		"CLAWBOT_IDENTITY_TIMEOUT",
+		"CLAWBOT_IDENTITY_TENANT",
 		"INFERENCE_BASE_URL",
 		"INFERENCE_PROVIDER",
 		"INFERENCE_MODEL_PROFILE",
@@ -70,6 +75,15 @@ func TestLoadServerFromEnvDefaults(t *testing.T) {
 	if cfg.ShutdownTimeout.String() != "10s" {
 		t.Fatalf("unexpected ShutdownTimeout: %s", cfg.ShutdownTimeout)
 	}
+	if cfg.NATSURL != "nats://127.0.0.1:4222" {
+		t.Fatalf("unexpected NATSURL: %s", cfg.NATSURL)
+	}
+	if cfg.IdentityBaseURL != "" {
+		t.Fatalf("unexpected IdentityBaseURL: %s", cfg.IdentityBaseURL)
+	}
+	if cfg.IdentityTimeout.String() != "5s" {
+		t.Fatalf("unexpected IdentityTimeout: %s", cfg.IdentityTimeout)
+	}
 
 	if cfg.InferenceBaseURL != "http://ai-precision:11434" {
 		t.Fatalf("unexpected InferenceBaseURL: %s", cfg.InferenceBaseURL)
@@ -116,5 +130,29 @@ func TestLoadServerFromEnvInvalidOptionalDurations(t *testing.T) {
 
 	if _, err := LoadServerFromEnv(); err == nil {
 		t.Fatal("expected GUARDRAIL_TIMEOUT parse error")
+	}
+}
+
+func TestLoadServerFromEnvInvalidIdentityTimeout(t *testing.T) {
+	clearServerEnv(t)
+	t.Setenv("DATABASE_URL", "postgres://clawbot@127.0.0.1:5432/clawbot?sslmode=disable")
+	t.Setenv("CLAWBOT_IDENTITY_TIMEOUT", "never")
+
+	if _, err := LoadServerFromEnv(); err == nil {
+		t.Fatal("expected CLAWBOT_IDENTITY_TIMEOUT parse error")
+	}
+}
+
+func TestLoadServerFromEnvNATSFallback(t *testing.T) {
+	clearServerEnv(t)
+	t.Setenv("DATABASE_URL", "postgres://clawbot@127.0.0.1:5432/clawbot?sslmode=disable")
+	t.Setenv("NATS_URL", "nats://custom:4222")
+
+	cfg, err := LoadServerFromEnv()
+	if err != nil {
+		t.Fatalf("LoadServerFromEnv() error = %v", err)
+	}
+	if cfg.NATSURL != "nats://custom:4222" {
+		t.Fatalf("unexpected NATSURL: %s", cfg.NATSURL)
 	}
 }

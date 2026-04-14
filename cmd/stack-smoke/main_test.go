@@ -181,6 +181,20 @@ func TestParsePostgresError(t *testing.T) {
 	}
 }
 
+func TestResolveIdentityHealthURL(t *testing.T) {
+	t.Setenv("CLAWBOT_IDENTITY_BASE_URL", "http://127.0.0.1:9090")
+	if got := resolveIdentityHealthURL(); got != "http://127.0.0.1:9090/healthz" {
+		t.Fatalf("unexpected identity health url: %q", got)
+	}
+}
+
+func TestResolveIdentityHealthURLEmpty(t *testing.T) {
+	t.Setenv("CLAWBOT_IDENTITY_BASE_URL", "")
+	if got := resolveIdentityHealthURL(); got != "" {
+		t.Fatalf("expected empty identity health url, got %q", got)
+	}
+}
+
 func withDialStub(t *testing.T, handler func(net.Conn)) func() {
 	t.Helper()
 

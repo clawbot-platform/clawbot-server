@@ -19,12 +19,13 @@ import (
 )
 
 type Services struct {
-	System    *handlers.SystemHandler
-	Runs      runs.Service
-	Bots      bots.Service
-	Policies  policies.Service
-	Dashboard handlers.DashboardService
-	Ops       ops.Service
+	System              *handlers.SystemHandler
+	Runs                runs.Service
+	Bots                bots.Service
+	Policies            policies.Service
+	Dashboard           handlers.DashboardService
+	Ops                 ops.Service
+	IdentityIntegration *handlers.IdentityIntegrationHandler
 }
 
 func New(logger *slog.Logger, services Services) http.Handler {
@@ -121,6 +122,13 @@ func New(logger *slog.Logger, services Services) http.Handler {
 			r.Get("/{policyID}", policiesHandler.Get)
 			r.Patch("/{policyID}", policiesHandler.Update)
 		})
+
+		if services.IdentityIntegration != nil {
+			r.Route("/identity", func(r chi.Router) {
+				r.Post("/compare", services.IdentityIntegration.Compare)
+				r.Post("/watchlist/ofac/screenings", services.IdentityIntegration.ScreenOFAC)
+			})
+		}
 	})
 
 	return router
