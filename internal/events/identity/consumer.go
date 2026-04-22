@@ -35,32 +35,48 @@ type Event[T any] struct {
 	Payload       T      `json:"payload"`
 }
 
+type AnalystAlignedReason struct {
+	Kind         string   `json:"kind"`
+	Strength     string   `json:"strength,omitempty"`
+	Message      string   `json:"message"`
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
+}
+
+type AnalystAlignedExplanation struct {
+	Summary       string                 `json:"summary"`
+	Reasons       []AnalystAlignedReason `json:"reasons,omitempty"`
+	AnalystNote   string                 `json:"analyst_note,omitempty"`
+	EvidenceKinds []string               `json:"evidence_kinds,omitempty"`
+}
+
 type CompareCompletedPayload struct {
-	TenantID            string `json:"tenant_id"`
-	CaseID              string `json:"case_id,omitempty"`
-	CorrelationID       string `json:"correlation_id,omitempty"`
-	DecisionTraceID     string `json:"decision_trace_id"`
-	ExplanationID       string `json:"explanation_id,omitempty"`
-	Disposition         string `json:"disposition"`
-	ConfidenceBand      string `json:"confidence_band,omitempty"`
-	LeftSourceSystem    string `json:"left_source_system,omitempty"`
-	LeftSourceRecordID  string `json:"left_source_record_id,omitempty"`
-	RightSourceSystem   string `json:"right_source_system,omitempty"`
-	RightSourceRecordID string `json:"right_source_record_id,omitempty"`
+	TenantID            string                     `json:"tenant_id"`
+	CaseID              string                     `json:"case_id,omitempty"`
+	CorrelationID       string                     `json:"correlation_id,omitempty"`
+	DecisionTraceID     string                     `json:"decision_trace_id"`
+	ExplanationID       string                     `json:"explanation_id,omitempty"`
+	Disposition         string                     `json:"disposition"`
+	ConfidenceBand      string                     `json:"confidence_band,omitempty"`
+	LeftSourceSystem    string                     `json:"left_source_system,omitempty"`
+	LeftSourceRecordID  string                     `json:"left_source_record_id,omitempty"`
+	RightSourceSystem   string                     `json:"right_source_system,omitempty"`
+	RightSourceRecordID string                     `json:"right_source_record_id,omitempty"`
+	AlignedExplanation  *AnalystAlignedExplanation `json:"aligned_explanation,omitempty"`
 }
 
 type OFACScreeningPayload struct {
-	TenantID          string  `json:"tenant_id"`
-	CaseID            string  `json:"case_id,omitempty"`
-	CorrelationID     string  `json:"correlation_id,omitempty"`
-	ScreeningID       string  `json:"screening_id"`
-	Decision          string  `json:"decision"`
-	DecisionTraceID   string  `json:"decision_trace_id,omitempty"`
-	ExplanationID     string  `json:"explanation_id,omitempty"`
-	SubjectName       string  `json:"subject_name"`
-	CandidateCount    int     `json:"candidate_count"`
-	TopCandidateName  string  `json:"top_candidate_name,omitempty"`
-	TopCandidateScore float64 `json:"top_candidate_score,omitempty"`
+	TenantID           string                     `json:"tenant_id"`
+	CaseID             string                     `json:"case_id,omitempty"`
+	CorrelationID      string                     `json:"correlation_id,omitempty"`
+	ScreeningID        string                     `json:"screening_id"`
+	Decision           string                     `json:"decision"`
+	DecisionTraceID    string                     `json:"decision_trace_id,omitempty"`
+	ExplanationID      string                     `json:"explanation_id,omitempty"`
+	SubjectName        string                     `json:"subject_name"`
+	CandidateCount     int                        `json:"candidate_count"`
+	TopCandidateName   string                     `json:"top_candidate_name,omitempty"`
+	TopCandidateScore  float64                    `json:"top_candidate_score,omitempty"`
+	AlignedExplanation *AnalystAlignedExplanation `json:"aligned_explanation,omitempty"`
 }
 
 type Handlers struct {
@@ -87,7 +103,6 @@ func NewConsumer(subscriber Subscriber, logger *slog.Logger, handlers Handlers) 
 	}
 
 	c := &Consumer{logger: logger}
-
 	if err := subscribe(c, subscriber, SubjectCompareCompleted, handlers.OnCompareCompleted); err != nil {
 		return nil, err
 	}
@@ -122,11 +137,9 @@ func subscribe[T any](c *Consumer, subscriber Subscriber, subject string, handle
 			c.logger.Error("identity.event.decode_failed", "subject", subject, "error", decodeErr)
 			return
 		}
-
 		if handler == nil {
 			return
 		}
-
 		if err := handler(context.Background(), event); err != nil {
 			c.logger.Error("identity.event.handler_failed", "subject", subject, "event_id", event.EventID, "error", err)
 		}

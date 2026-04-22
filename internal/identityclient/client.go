@@ -25,7 +25,6 @@ func New(baseURL string, timeout time.Duration, defaultTenant string) *Client {
 	if timeout <= 0 {
 		timeout = defaultHTTPTimeout
 	}
-
 	return &Client{
 		baseURL:       strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		defaultTenant: strings.TrimSpace(defaultTenant),
@@ -53,7 +52,6 @@ func (c *Client) Compare(ctx context.Context, req CompareRequest, correlationID 
 	if err := c.doJSON(ctx, http.MethodPost, "/v1/compare", req, &decoded, correlationID, caseID); err != nil {
 		return CompareResponse{}, err
 	}
-
 	return decoded, nil
 }
 
@@ -67,7 +65,6 @@ func (c *Client) ScreenOFAC(ctx context.Context, req ScreenOFACRequest, correlat
 	if err := c.doJSON(ctx, http.MethodPost, "/v1/watchlist/ofac/screenings", req, &decoded, correlationID, req.CaseID); err != nil {
 		return ScreenOFACResponse{}, err
 	}
-
 	return decoded, nil
 }
 
@@ -104,6 +101,7 @@ func (c *Client) doJSON(
 	if err != nil {
 		return fmt.Errorf("build %s %s request: %w", method, path, err)
 	}
+
 	req.Header.Set("Accept", "application/json")
 	if requestBody != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -135,7 +133,6 @@ func (c *Client) doJSON(
 		}
 		return fmt.Errorf("decode %s %s response: %w", method, path, err)
 	}
-
 	return nil
 }
 

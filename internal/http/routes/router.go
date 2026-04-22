@@ -19,12 +19,16 @@ import (
 )
 
 type Services struct {
-	System              *handlers.SystemHandler
-	Runs                runs.Service
-	Bots                bots.Service
-	Policies            policies.Service
-	Dashboard           handlers.DashboardService
-	Ops                 ops.Service
+	System *handlers.SystemHandler
+
+	Runs     runs.Service
+	Bots     bots.Service
+	Policies policies.Service
+
+	Dashboard handlers.DashboardService
+
+	Ops ops.Service
+
 	IdentityIntegration *handlers.IdentityIntegrationHandler
 	WatchlistReview     *handlers.WatchlistReviewHandler
 }
@@ -47,6 +51,7 @@ func New(logger *slog.Logger, services Services) http.Handler {
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ops", http.StatusSeeOther)
 	})
+
 	router.Route("/ops", func(r chi.Router) {
 		r.Get("/", opsHandler.OverviewPage)
 		r.Get("/services", opsHandler.ServicesPage)
@@ -67,6 +72,7 @@ func New(logger *slog.Logger, services Services) http.Handler {
 		dashboardHandler := handlers.NewDashboardHandler(services.Dashboard)
 
 		r.Get("/dashboard/summary", dashboardHandler.Summary)
+
 		r.Route("/ops", func(r chi.Router) {
 			r.Get("/overview", opsHandler.Overview)
 			r.Get("/services", opsHandler.ListServices)

@@ -64,7 +64,6 @@ func (h *IdentityIntegrationHandler) Compare(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -96,7 +95,6 @@ func (h *IdentityIntegrationHandler) ScreenOFAC(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -110,11 +108,4 @@ func correlationIDFromRequest(r *http.Request, fallback string) string {
 	return "corr_" + time.Now().UTC().Format("20060102150405.000000000")
 }
 
-/*
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-*/
-
+// writeJSON is defined in common.go.

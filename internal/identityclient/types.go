@@ -1,5 +1,19 @@
 package identityclient
 
+type AnalystAlignedReason struct {
+	Kind         string   `json:"kind"`
+	Strength     string   `json:"strength,omitempty"`
+	Message      string   `json:"message"`
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
+}
+
+type AnalystAlignedExplanation struct {
+	Summary       string                 `json:"summary"`
+	Reasons       []AnalystAlignedReason `json:"reasons,omitempty"`
+	AnalystNote   string                 `json:"analyst_note,omitempty"`
+	EvidenceKinds []string               `json:"evidence_kinds,omitempty"`
+}
+
 type RecordRef struct {
 	SourceSystem   string `json:"source_system"`
 	SourceRecordID string `json:"source_record_id"`
@@ -18,12 +32,15 @@ type CompareSourceRef struct {
 }
 
 type CompareExplanation struct {
-	ExplanationID string             `json:"explanation_id"`
-	Summary       string             `json:"summary"`
-	Why           []string           `json:"why"`
-	WhyNot        []string           `json:"why_not"`
-	How           []string           `json:"how"`
-	SourceRefs    []CompareSourceRef `json:"source_refs"`
+	ExplanationID string `json:"explanation_id"`
+	Summary       string `json:"summary"`
+
+	Why    []string `json:"why"`
+	WhyNot []string `json:"why_not"`
+	How    []string `json:"how"`
+
+	SourceRefs []CompareSourceRef         `json:"source_refs"`
+	Alignment  *AnalystAlignedExplanation `json:"alignment,omitempty"`
 }
 
 type CompareResponse struct {

@@ -13,6 +13,7 @@ func mapCompareResponse(response identityclient.CompareResponse) CompareRecordsR
 			WhyNot:        append([]string(nil), response.Explanation.WhyNot...),
 			How:           append([]string(nil), response.Explanation.How...),
 			SourceRefs:    mapCompareSourceRefs(response.Explanation.SourceRefs),
+			Alignment:     mapAlignment(response.Explanation.Alignment),
 		},
 		DecisionTraceID: response.DecisionTraceID,
 	}
@@ -30,8 +31,30 @@ func mapCompareSourceRefs(sourceRefs []identityclient.CompareSourceRef) []Compar
 			SourceRecordID: sourceRef.SourceRecordID,
 		})
 	}
-
 	return mapped
+}
+
+func mapAlignment(alignment *identityclient.AnalystAlignedExplanation) *AnalystAlignedExplanation {
+	if alignment == nil {
+		return nil
+	}
+
+	reasons := make([]AnalystAlignedReason, 0, len(alignment.Reasons))
+	for _, reason := range alignment.Reasons {
+		reasons = append(reasons, AnalystAlignedReason{
+			Kind:         reason.Kind,
+			Strength:     reason.Strength,
+			Message:      reason.Message,
+			EvidenceRefs: append([]string(nil), reason.EvidenceRefs...),
+		})
+	}
+
+	return &AnalystAlignedExplanation{
+		Summary:       alignment.Summary,
+		Reasons:       reasons,
+		AnalystNote:   alignment.AnalystNote,
+		EvidenceKinds: append([]string(nil), alignment.EvidenceKinds...),
+	}
 }
 
 func mapOFACScreeningResponse(response identityclient.ScreenOFACResponse) OFACScreeningResult {
@@ -60,6 +83,5 @@ func mapOFACCandidates(candidates []identityclient.OFACCandidate) []OFACCandidat
 			NeedsReview:  candidate.NeedsReview,
 		})
 	}
-
 	return mapped
 }
