@@ -1,0 +1,13 @@
+Add to `internal/http/routes/router.go`:
+
+1. Extend `Services` with:
+
+    WatchlistReview *handlers.WatchlistReviewHandler
+
+2. Inside `/api/v1`, add:
+
+    if services.WatchlistReview != nil {
+        r.Route("/watchlist-review", func(r chi.Router) {
+            r.Post("/reviews", services.WatchlistReview.Create)
+        })
+    }

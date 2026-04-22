@@ -33,6 +33,8 @@ type Server struct {
 	DefaultExecutionRing         string
 	PolicyBundleID               string
 	PolicyBundleVersion          string
+	WatchlistReviewBaseURL       string
+	WatchlistReviewTimeout       time.Duration
 }
 
 func LoadServerFromEnv() (Server, error) {
@@ -56,6 +58,7 @@ func LoadServerFromEnv() (Server, error) {
 		DefaultExecutionRing:         envOrDefault("DEFAULT_EXECUTION_RING", "ring_1"),
 		PolicyBundleID:               envOrDefault("POLICY_BUNDLE_ID", "ach-governance"),
 		PolicyBundleVersion:          envOrDefault("POLICY_BUNDLE_VERSION", "2026.1"),
+		WatchlistReviewBaseURL:       strings.TrimSpace(os.Getenv("CLAWBOT_WATCHLIST_REVIEW_BASE_URL")),
 	}
 
 	shutdownTimeout, err := time.ParseDuration(envOrDefault("SHUTDOWN_TIMEOUT", "10s"))
@@ -93,6 +96,12 @@ func LoadServerFromEnv() (Server, error) {
 		return Server{}, fmt.Errorf("parse HELPER_TIMEOUT: %w", err)
 	}
 	cfg.HelperTimeout = helperTimeout
+
+	watchlistReviewTimeout, err := time.ParseDuration(envOrDefault("CLAWBOT_WATCHLIST_REVIEW_TIMEOUT", "10s"))
+	if err != nil {
+		return Server{}, fmt.Errorf("parse CLAWBOT_WATCHLIST_REVIEW_TIMEOUT: %w", err)
+	}
+	cfg.WatchlistReviewTimeout = watchlistReviewTimeout
 
 	if cfg.DatabaseURL == "" {
 		return Server{}, fmt.Errorf("DATABASE_URL is required")

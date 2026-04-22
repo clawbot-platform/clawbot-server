@@ -26,6 +26,7 @@ type Services struct {
 	Dashboard           handlers.DashboardService
 	Ops                 ops.Service
 	IdentityIntegration *handlers.IdentityIntegrationHandler
+	WatchlistReview     *handlers.WatchlistReviewHandler
 }
 
 func New(logger *slog.Logger, services Services) http.Handler {
@@ -127,6 +128,12 @@ func New(logger *slog.Logger, services Services) http.Handler {
 			r.Route("/identity", func(r chi.Router) {
 				r.Post("/compare", services.IdentityIntegration.Compare)
 				r.Post("/watchlist/ofac/screenings", services.IdentityIntegration.ScreenOFAC)
+			})
+		}
+
+		if services.WatchlistReview != nil {
+			r.Route("/watchlist-review", func(r chi.Router) {
+				r.Post("/reviews", services.WatchlistReview.Create)
 			})
 		}
 	})

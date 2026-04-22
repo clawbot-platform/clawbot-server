@@ -23,6 +23,8 @@ import (
 	"clawbot-server/internal/platform/store"
 	"clawbot-server/internal/version"
 	"clawbot-server/internal/watchlistidentity"
+	"clawbot-server/internal/watchlistreviewclient"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -73,6 +75,7 @@ func RunServer(ctx context.Context, cfg config.Server, logger *slog.Logger) erro
 		Dashboard:           services.dashboard,
 		Ops:                 services.ops,
 		IdentityIntegration: handlers.NewIdentityIntegrationHandler(services.watchlistIdentity),
+		WatchlistReview:     handlers.NewWatchlistReviewHandler(services.watchlistReview),
 	})
 
 	server := &http.Server{
@@ -126,6 +129,7 @@ type appServices struct {
 	dashboard         *store.DashboardReader
 	ops               *ops.Manager
 	watchlistIdentity *watchlistidentity.Service
+	watchlistReview   *watchlistreviewclient.Client
 }
 
 func buildServices(pg *store.Postgres, buildInfo version.Info, cfg config.Server) appServices {
@@ -149,6 +153,11 @@ func buildServices(pg *store.Postgres, buildInfo version.Info, cfg config.Server
 
 	identityClient := identityclient.New(cfg.IdentityBaseURL, cfg.IdentityTimeout, cfg.IdentityTenant)
 	watchlistIntegration := watchlistidentity.NewService(identityClient)
+
+	watchlistReviewClient := watchlistreviewclient.New(
+		cfg.WatchlistReviewBaseURL,
+		cfg.WatchlistReviewTimeout,
+	)
 
 	return appServices{
 		runs: runs.NewManagerWithIntegrations(
@@ -176,5 +185,6 @@ func buildServices(pg *store.Postgres, buildInfo version.Info, cfg config.Server
 		dashboard:         store.NewDashboardReader(pg.Pool()),
 		ops:               ops.NewManager(buildInfo),
 		watchlistIdentity: watchlistIntegration,
+		watchlistReview:   watchlistReviewClient,
 	}
 }

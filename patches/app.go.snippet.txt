@@ -1,0 +1,22 @@
+Minimal wiring pattern for `internal/app/app.go`:
+
+1. Construct the client somewhere in `buildServices(...)` or equivalent:
+
+    watchlistReviewClient := watchlistreviewclient.New(
+        cfg.WatchlistReviewBaseURL,
+        cfg.WatchlistReviewTimeout,
+    )
+
+2. Add to your services struct:
+
+    watchlistReviewClient *watchlistreviewclient.Client
+
+3. Pass to routes:
+
+    WatchlistReview: handlers.NewWatchlistReviewHandler(services.watchlistReviewClient),
+
+4. Add config fields / envs:
+    CLAWBOT_WATCHLIST_REVIEW_BASE_URL
+    CLAWBOT_WATCHLIST_REVIEW_TIMEOUT
+
+This keeps the path thin and synchronous.
